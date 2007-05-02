@@ -1,0 +1,9 @@
+Changelog for collective.lead
+
+    (name of developer listed in brackets)
+
+collective.lead - 1.0 Unreleased
+
+    - Initial package structure.
+      [zopeskel]
+
