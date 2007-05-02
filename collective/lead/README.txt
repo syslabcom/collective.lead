@@ -83,6 +83,7 @@ transaction, and will commit or roll back as appropriate when the request
 ends. Or, in other words, it should work more or less as you'd expect and
 you should not need to worry about transactions (neither Zope nor SQL ones).
 
+    >>> from zope.component import getUtility
     >>> db = getUtility(IDatabase, name='my.database')
     >>> db.session.query(TableOne).list()
     []
