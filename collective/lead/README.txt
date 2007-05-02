@@ -55,7 +55,7 @@ named utility providing IDatabase.
     >>> class MyDatabase(Database):
     ...     @property
     ...     def _url(self):
-    ...         return URL(drivername='mysql', username='user',
+    ...         return sa.engine.url.URL(drivername='mysql', username='user',
     ...                    host='localhost',  database='testdb')
     ...
     ...     def _setup_tables(self, metadata, tables):
