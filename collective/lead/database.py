@@ -10,7 +10,7 @@ class Database(object):
     """Base class for database utilities. You are supposed to subclass
     this class, and implement the _url and (optionally) _engine_properties
     properties to configure the database connection. You must also implement
-    _setUpTables() and, optionally, _setUpMappers() to set up tables and
+    _setup_tables() and, optionally, _setup_mappers() to set up tables and
     mappers. 
     
     Register your subclass as a named utility providing IDatabase. Calling
@@ -35,7 +35,7 @@ class Database(object):
         return {}
         
     def _setup_tables(self, metadata, tables):
-        raise NotImplemented("You must implement the _setUpTables method")
+        raise NotImplemented("You must implement the _setup_tables() method")
         
     def _setup_mappers(self, tables, mappers):
         # Mappers are not strictly necessary

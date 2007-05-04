@@ -23,7 +23,8 @@ class TreadlocalDatabaseTransactions(object):
     # transaction.active == False
 
     def begin(self):
-        transaction.get().join(TreadlocalDatabaseDataManager(self))
+        assert not self.active, "Transaction already in progress"
+        transaction.get().join(ThreadlocalDatabaseDataManager(self))
         self.context._threadlocal.active = True
         self.context.engine.begin()
         
@@ -44,7 +45,7 @@ class TreadlocalDatabaseTransactions(object):
         self.context._threadlocal.active = False
         self.context._threadlocal.session = None
     
-class TreadlocalDatabaseDataManager(object):
+class ThreadlocalDatabaseDataManager(object):
     """Use join the transactions of a threadlocal engine to Zope
     transactions
     """
@@ -59,20 +60,24 @@ class TreadlocalDatabaseDataManager(object):
         self.tx = None
         
     def commit(self, trans):
-        self.tx.commit()
-        self.tx = None
+        pass
 
     def tpc_begin(self, trans):
         pass
 
     def tpc_vote(self, trans):
-        pass
+        self.tx.commit()
+        self.tx = None
 
     def tpc_finish(self, trans):
         pass
 
     def tpc_abort(self, trans):
-        pass
+        self.tx.rollback()
+        self.tx = None
 
     def sortKey(self):
-        return str(id(self))
+        # Try to sort last, so that we vote last - we commit in tpc_vote(),
+        # which allows Zope to roll back its transaction if the RDBMS 
+        # threw a conflict error.
+        return "~lead:%d" % id(self.tx)

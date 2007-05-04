@@ -31,7 +31,7 @@ class IConfigurableDatabase(IDatabase):
     def invalidate(self):
         """Invalidate the configuration of the database, causing the engine
         to be re-initialised. This will not re-map database tables 
-        (self._setUpTables() and self._setUpMappers() are still called at
+        (self._setup_tables() and self._setup_mappers() are still called at
         most once per Zope start-up), but tables will be re-bound to 
         different metadata if necessary.
         """
