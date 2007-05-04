@@ -24,7 +24,7 @@ class TreadlocalDatabaseTransactions(object):
 
     def begin(self):
         assert not self.active, "Transaction already in progress"
-        transaction.get().join(TreadlocalDatabaseDataManager(self))
+        transaction.get().join(ThreadlocalDatabaseDataManager(self))
         self.context._threadlocal.active = True
         self.context.engine.begin()
         
@@ -45,7 +45,7 @@ class TreadlocalDatabaseTransactions(object):
         self.context._threadlocal.active = False
         self.context._threadlocal.session = None
     
-class TreadlocalDatabaseDataManager(object):
+class ThreadlocalDatabaseDataManager(object):
     """Use join the transactions of a threadlocal engine to Zope
     transactions
     """
