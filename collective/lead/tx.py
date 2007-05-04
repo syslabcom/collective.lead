@@ -77,4 +77,7 @@ class TreadlocalDatabaseDataManager(object):
         self.tx = None
 
     def sortKey(self):
+        # Try to sort last, so that we vote last - we commit in tpc_vote(),
+        # which allows Zope to roll back its transaction if the RDBMS 
+        # threw a conflict error.
         return "~lead:%d" % id(self.tx)
