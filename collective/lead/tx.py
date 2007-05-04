@@ -60,20 +60,21 @@ class TreadlocalDatabaseDataManager(object):
         self.tx = None
         
     def commit(self, trans):
-        self.tx.commit()
-        self.tx = None
+        pass
 
     def tpc_begin(self, trans):
         pass
 
     def tpc_vote(self, trans):
-        pass
+        self.tx.commit()
+        self.tx = None
 
     def tpc_finish(self, trans):
         pass
 
     def tpc_abort(self, trans):
-        pass
+        self.tx.rollback()
+        self.tx = None
 
     def sortKey(self):
-        return str(id(self))
+        return "~lead:%d" % id(self.tx)
