@@ -23,6 +23,7 @@ class TreadlocalDatabaseTransactions(object):
     # transaction.active == False
 
     def begin(self):
+        assert not self.active, "Transaction already in progress"
         transaction.get().join(TreadlocalDatabaseDataManager(self))
         self.context._threadlocal.active = True
         self.context.engine.begin()
