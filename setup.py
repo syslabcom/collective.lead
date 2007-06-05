@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '1.0b2'
+version = '1.0b3'
 
 setup(name='collective.lead',
       version=version,
@@ -54,7 +54,7 @@ The use case
       packages=find_packages(exclude=['ez_setup']),
       namespace_packages=['collective'],
       include_package_data=True,
-      zip_safe=True,
+      zip_safe=False,
       install_requires=[
           # -*- Extra requirements: -*-
           'setuptools',
