@@ -69,9 +69,20 @@ named utility providing IDatabase.
     ...                                             'table1' : sa.relation(TableOne),
     ...                                             })
         
+
+The database utility can now be registered using zcml:
+
+ <utility
+    provides="collective.lead.interfaces.IDatabase"
+    factory=".database.MyDatabase"
+    name="my.database"
+    />
+
+or if you prefer directly from python (XXX this does not work):
+
     >>> from zope.component import provideUtility
     >>> from collective.lead.interfaces import IDatabase
-    >>> provideUtility(factory=MyDatabase, name='my.database', provides=IDatabase)
+    >>> provideUtility(MyDatabase, name='my.database', provides=IDatabase)
 
 Using the database connection
 -----------------------------
