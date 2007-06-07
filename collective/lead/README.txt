@@ -70,7 +70,7 @@ named utility providing IDatabase.
     ...                                             })
         
     >>> from zope.component import provideUtility
-    >>> from collective.lead import IDatabase
+    >>> from collective.lead.interfaces import IDatabase
     >>> provideUtility(factory=MyDatabase, name='my.database', provides=IDatabase)
 
 Using the database connection
