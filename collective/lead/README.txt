@@ -16,7 +16,7 @@ SQLAlchemy table metadata and mappers, no generation of Zope 3 interfaces,
 no CRUD operations, and no dancing polar bears.
 
 You need to understand SQLAlchemy for this package and this README to make 
-any sense. See http://sqlalchemy.org/doc.
+any sense. See http://sqlalchemy.org/docs/.
 
 The use case
 ------------
