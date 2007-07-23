@@ -6,7 +6,7 @@ collective.lead Installation
    (and EasyInstall) here:
    http://peak.telecommunity.com/DevCenter/EasyInstall
 
- * Get `pythonproducts`_ and install it via::
+ * Get `pythonproducts`_ and install it via (not required with Zope 2.10)::
 
        python setup.py install --home /path/to/instance
 
