@@ -1,6 +1,8 @@
 import threading
 import sqlalchemy
 
+from sqlalchemy.orm.session import Session
+
 from zope.interface import implements
 
 from collective.lead.interfaces import IConfigurableDatabase
@@ -56,7 +58,7 @@ class Database(object):
             # will we necessarily start a transaction when the client
             # code begins to use the session.
             ignore = self.engine
-            self._threadlocal.session = sqlalchemy.create_session()
+            self._threadlocal.session = Session()
         return self._threadlocal.session
     
     @property
@@ -82,7 +84,7 @@ class Database(object):
             kwargs['strategy'] = 'threadlocal'
         
         engine = sqlalchemy.create_engine(self._url, **kwargs)
-        metadata = sqlalchemy.BoundMetaData(engine)
+        metadata = sqlalchemy.MetaData(engine)
         
         # We will only initialize once, but we may rebind metadata if
         # necessary
