@@ -23,6 +23,9 @@ no CRUD operations, and no dancing polar bears.
 You need to understand SQLAlchemy for this package and this README to make 
 any sense. See http://sqlalchemy.org/doc.
 
+NOTE: collective.lead 1.0 targets SQLAlchemy 0.3 only. Subsequent versions 
+will target SQLAlchemy 0.4.
+
 The use case
 ------------
 
@@ -58,7 +61,7 @@ The use case
       install_requires=[
           # -*- Extra requirements: -*-
           'setuptools',
-          'SQLAlchemy',
+          'SQLAlchemy>=0.3,<0.4',
       ],
       entry_points="""
       # -*- Entry points: -*-
