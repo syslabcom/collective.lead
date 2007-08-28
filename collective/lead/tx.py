@@ -56,8 +56,10 @@ class ThreadlocalDatabaseDataManager(object):
         self.tx = tx
 
     def abort(self, trans):
-        self.tx.rollback()
-        self.tx = None
+        # sometimes tx is None
+        if self.tx is not None:
+            self.tx.rollback()
+            self.tx = None
         
     def commit(self, trans):
         pass
@@ -73,8 +75,7 @@ class ThreadlocalDatabaseDataManager(object):
         pass
 
     def tpc_abort(self, trans):
-        self.tx.rollback()
-        self.tx = None
+        self.abort(trans)
 
     def sortKey(self):
         # Try to sort last, so that we vote last - we commit in tpc_vote(),
