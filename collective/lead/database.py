@@ -82,6 +82,8 @@ class Database(object):
         kwargs = dict(self._engine_properties).copy()
         if 'strategy' not in kwargs:
             kwargs['strategy'] = 'threadlocal'
+        if 'convert_unicode' not in kwargs:
+            kwargs['convert_unicode'] = True
         
         engine = sqlalchemy.create_engine(self._url, **kwargs)
         metadata = sqlalchemy.MetaData(engine)
