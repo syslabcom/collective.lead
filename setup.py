@@ -61,7 +61,7 @@ The use case
       install_requires=[
           # -*- Extra requirements: -*-
           'setuptools',
-          'SQLAlchemy>=0.3.10,<0.4',
+          'SQLAlchemy>=0.3.10,<0.4dev',
       ],
       entry_points="""
       # -*- Entry points: -*-
