@@ -9,7 +9,7 @@ from collective.lead.interfaces import ITransactionAware
 
 from collective.lead.database import Database
 
-class TreadlocalDatabaseTransactions(object):
+class ThreadlocalDatabaseTransactions(object):
     """Implementation-specific adapter for transaction awareness
     """
     

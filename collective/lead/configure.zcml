@@ -3,6 +3,6 @@
     <adapter 
         for=".database.Database"
         provides=".interfaces.ITransactionAware"
-        factory=".tx.TreadlocalDatabaseTransactions" />
+        factory=".tx.ThreadlocalDatabaseTransactions" />
     
 </configure>
