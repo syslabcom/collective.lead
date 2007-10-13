@@ -1,8 +1,39 @@
 import unittest
 
+import zope.annotation
+import zope.security
+import zope.app.security
+import zope.app.component
+import zope.app.container
+
 from zope.testing import doctestunit
 from zope.component import testing
 from Testing import ZopeTestCase as ztc
+
+from zope.app.testing.placelesssetup import setUp, tearDown
+
+from zope.configuration.xmlconfig import XMLConfig
+
+import collective.lead
+
+def configurationSetUp(test):
+    setUp()
+
+    XMLConfig('meta.zcml', zope.security)()
+    XMLConfig('meta.zcml', zope.app.security)()
+    XMLConfig('meta.zcml', zope.app.component)()
+
+    XMLConfig('configure.zcml', zope.app.security)()
+    XMLConfig('configure.zcml', zope.app.container)()
+    XMLConfig('configure.zcml', zope.annotation)()
+
+
+    XMLConfig('configure.zcml', collective.lead)()
+    # XMLConfig('meta.zcml', plone.contentrules)()
+
+def configurationTearDown(test):
+    tearDown()
+
 
 def test_suite():
     return unittest.TestSuite([
@@ -13,9 +44,12 @@ def test_suite():
         # real database tests (against a real database), or you could
         # help me write some tests against e.g. sqlite. :)
 
-        # ztc.ZopeDocFileSuite(
-        #    'README.txt', package='collective.lead',
-        #    setUp=testing.setUp, tearDown=testing.tearDown),
+        ztc.ZopeDocFileSuite(
+           'README.txt', package='collective.lead',
+            setUp=configurationSetUp,
+            tearDown=configurationTearDown),
+
+           #setUp=testing.setUp, tearDown=testing.tearDown),
 
         ])
 

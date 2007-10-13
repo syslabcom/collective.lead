@@ -70,3 +70,10 @@ class ITransactionAware(Interface):
         """
         
     active = Attribute("True if the transaction is currently in-progress")
+
+# Used by SQLAlchemy session extension
+class ISessionFlushedEvent(Interface):
+    """ Event triggered after session has been flushed """
+
+class IBeforeSessionFlushEvent(Interface):
+    """ Event triggered before session will be flushed """

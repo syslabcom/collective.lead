@@ -55,18 +55,23 @@ named utility providing IDatabase.
     >>> class MyDatabase(Database):
     ...     @property
     ...     def _url(self):
-    ...         return sa.engine.url.URL(drivername='mysql', username='user',
-    ...                    host='localhost',  database='testdb')
+    ...         return sa.engine.url.URL(drivername='sqlite', database=':memory:')
     ...
     ...     def _setup_tables(self, metadata, tables):
-    ...         tables['table1'] = sa.Table('table1', metadata, autoload=True)
-    ...         tables['table2'] = sa.Table('table2', metadata, autoload=True)
+    ...         tables['table1'] = sa.Table('table1', 
+    ...                      metadata,    
+    ...                      sa.Column('id', sa.Integer, sa.Sequence('id_seq',optional=True), primary_key=True ,autoincrement=True),
+    ...                      sa.Column('column', sa.String), )
+    ...         tables['table2'] = sa.Table('table2', 
+    ...                      metadata,    
+    ...                      sa.Column('id', sa.Integer, sa.Sequence('id_seq',optional=True), primary_key=True ,autoincrement=True),
+    ...                      sa.Column('table1_id', sa.Integer, sa.ForeignKey('table1.id'),nullable=False, index=True), ) 
     ... 
     ...     def _setup_mappers(self, tables, mappers):
-    ...         mappers['table1'] = sa.mapper(TableOne, tables['table1'])
-    ...         mappers['table2'] = sa.mapper(TableTwo, tables['table2'],
+    ...         mappers['table1'] = sa.orm.mapper(TableOne, tables['table1'])
+    ...         mappers['table2'] = sa.orm.mapper(TableTwo, tables['table2'],
     ...                                         properties = {
-    ...                                             'table1' : sa.relation(TableOne),
+    ...                                             'table1' : sa.orm.relation(TableOne),
     ...                                             })
         
 
@@ -78,11 +83,12 @@ The database utility can now be registered using zcml:
     name="my.database"
     />
 
-or if you prefer directly from python (XXX this does not work):
+or if you prefer directly from python:
 
     >>> from zope.component import provideUtility
     >>> from collective.lead.interfaces import IDatabase
-    >>> provideUtility(MyDatabase, name='my.database', provides=IDatabase)
+    >>> myDataBase = MyDatabase()
+    >>> provideUtility(myDataBase, name='my.database', provides=IDatabase)
 
 Using the database connection
 -----------------------------
@@ -96,9 +102,45 @@ you should not need to worry about transactions (neither Zope nor SQL ones).
 
     >>> from zope.component import getUtility
     >>> db = getUtility(IDatabase, name='my.database')
+
+First we initialize the database
+    >>> db.metadata.drop_all()
+    >>> db.metadata.create_all()
     >>> db.session.query(TableOne).list()
     []
     
     >>> db.connection.execute("SELECT * FROM table1")
+    <sqlalchemy.engine.base.ResultProxy object at ...>
 
+Managing transaction
+--------------------
+
+Transaction is automatically managed by the session object.
+(see http://www.sqlalchemy.org/docs/04/session.html#unitofwork_managing)
+
+    >>> object1 = TableOne()
+    >>> object1.column = "column"
+    >>> db.session.save(object1)
+    >>> db.session.query(TableOne).get_by(column="column") == object1
+    True
+
+Object are automatically flushed by the session.
     
+    >>> db.connection.execute("SELECT * FROM table1").fetchall()
+    [(1, u'column')]
+    >>> db.session.rollback()
+    >>> db.session.query(TableOne).get_by(column="column")
+    >>> db.connection.execute("SELECT * FROM table1").fetchall()
+    []
+    >>> object1 = TableOne()
+    >>> object1.column = "column"
+    >>> db.session.save(object1)
+    >>> db.session.new
+    set([<TableOne object at ...>])
+    >>> db.session.commit()
+    >>> db.session.new
+    set([])
+    >>> db.session.clear()
+    >>> db.connection.execute("SELECT * FROM table1").fetchall()
+    [(1, u'column')]
+

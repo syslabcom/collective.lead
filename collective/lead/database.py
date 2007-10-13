@@ -2,11 +2,37 @@ import threading
 import sqlalchemy
 
 from sqlalchemy.orm.session import Session
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm.session import SessionExtension
 
 from zope.interface import implements
+from zope.event import notify
 
 from collective.lead.interfaces import IConfigurableDatabase
 from collective.lead.interfaces import ITransactionAware
+from collective.lead.interfaces import ISessionFlushedEvent
+from collective.lead.interfaces import IBeforeSessionFlushEvent
+
+class SessionEvent(object):
+    def __init__(self, session):
+        self.session = session
+
+
+class SessionFlushedEvent(SessionEvent):
+    implements(ISessionFlushedEvent)
+
+
+class BeforeSessionFlushEvent(SessionEvent):
+    implements(IBeforeSessionFlushEvent)
+
+
+class SASessionExtension(SessionExtension):
+    def before_flush(self, session, flush_context, objects):
+        notify(BeforeSessionFlushEvent(session))
+
+    def after_flush(self, session, flush_context):
+        notify(SessionFlushedEvent(session))
+
 
 class Database(object):
     """Base class for database utilities. You are supposed to subclass
@@ -27,7 +53,7 @@ class Database(object):
         self.mappers = {}
         
     # IConfigurableDatabase implementation - subclasses should override these
-    
+   
     @property
     def _url(self):
         raise NotImplemented("You must implement the _url property")
@@ -58,7 +84,7 @@ class Database(object):
             # will we necessarily start a transaction when the client
             # code begins to use the session.
             ignore = self.engine
-            self._threadlocal.session = Session()
+            self._threadlocal.session = self._sessionmaker()
         return self._threadlocal.session
     
     @property
@@ -100,14 +126,24 @@ class Database(object):
         
         self._engine = engine
         self._metadata = metadata
-
+        self._sessionmaker = sqlalchemy.orm.sessionmaker(bind=self._engine, 
+                                                 autoflush=True,
+                                                 transactional=True,
+                                                 extension=SASessionExtension())
          
     @property
     def _transaction(self):
         if self._tx is None:
             self._tx = ITransactionAware(self)
         return self._tx
-            
+           
+    @property
+    def metadata(self):
+        if self._engine is None:
+            self._initialize_engine()
+        return self._metadata
+
+    _sessionmaker = None
     _engine = None
     _metadata = None
     _tx = None

@@ -26,7 +26,6 @@ class ThreadlocalDatabaseTransactions(object):
         assert not self.active, "Transaction already in progress"
         transaction.get().join(ThreadlocalDatabaseDataManager(self))
         self.context._threadlocal.active = True
-        self.context.engine.begin()
         
     @property
     def active(self):
@@ -36,14 +35,18 @@ class ThreadlocalDatabaseTransactions(object):
     # transaction commits/rollbacks
         
     def rollback(self):
-        self.context.engine.rollback()
+        self.context.session.rollback()
+        self.context.session.clear()
         self.context._threadlocal.active = False
         self.context._threadlocal.session = None
     
     def commit(self):
-        self.context.engine.commit()
+        self.context.session.commit()
         self.context._threadlocal.active = False
         self.context._threadlocal.session = None
+    
+    def flush(self):
+        self.context.session.flush()
     
 class ThreadlocalDatabaseDataManager(object):
     """Use join the transactions of a threadlocal engine to Zope
@@ -62,13 +65,12 @@ class ThreadlocalDatabaseDataManager(object):
             self.tx = None
         
     def commit(self, trans):
-        pass
+        self.tx.commit()
 
     def tpc_begin(self, trans):
-        pass
+        self.tx.flush()
 
     def tpc_vote(self, trans):
-        self.tx.commit()
         self.tx = None
 
     def tpc_finish(self, trans):
