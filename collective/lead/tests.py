@@ -1,11 +1,6 @@
 import unittest
 
-import zope.annotation
-import zope.security
-import zope.app.security
 import zope.app.component
-import zope.app.container
-
 from zope.testing import doctestunit
 from zope.component import testing
 from Testing import ZopeTestCase as ztc
@@ -18,18 +13,8 @@ import collective.lead
 
 def configurationSetUp(test):
     setUp()
-
-    XMLConfig('meta.zcml', zope.security)()
-    XMLConfig('meta.zcml', zope.app.security)()
     XMLConfig('meta.zcml', zope.app.component)()
-
-    XMLConfig('configure.zcml', zope.app.security)()
-    XMLConfig('configure.zcml', zope.app.container)()
-    XMLConfig('configure.zcml', zope.annotation)()
-
-
     XMLConfig('configure.zcml', collective.lead)()
-    # XMLConfig('meta.zcml', plone.contentrules)()
 
 def configurationTearDown(test):
     tearDown()
