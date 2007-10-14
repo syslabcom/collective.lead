@@ -64,7 +64,11 @@ class ITransactionAware(Interface):
     def commit():
         """Commit the transaction
         """
-        
+    
+    def flush():
+        """Flush the session
+        """
+
     def rollback():
         """Commit the transaction
         """
