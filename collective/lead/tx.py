@@ -65,12 +65,13 @@ class ThreadlocalDatabaseDataManager(object):
             self.tx = None
         
     def commit(self, trans):
-        self.tx.commit()
+        pass
 
     def tpc_begin(self, trans):
         self.tx.flush()
 
     def tpc_vote(self, trans):
+        self.tx.commit()
         self.tx = None
 
     def tpc_finish(self, trans):
