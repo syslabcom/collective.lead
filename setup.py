@@ -61,7 +61,7 @@ The use case
       install_requires=[
           # -*- Extra requirements: -*-
           'setuptools',
-          'SQLAlchemy>=0.4',
+          'SQLAlchemy>=0.4,<0.5dev',
       ],
       extras_require=dict(test=['pysqlite']),
       entry_points="""
