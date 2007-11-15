@@ -168,7 +168,7 @@ database commits, since they bypass Zope's transaction.)
     >>> object1.column = "column"
     >>> db.session.save(object1)
     >>> db.session.new
-    set([TableOne(id=None, column='column1')])
+    set([TableOne(id=None, column='column')])
     >>> db.session.commit()
     >>> db.session.new
     set([])
@@ -193,6 +193,8 @@ Let's try it with the Zope transaction.
 Neither of the new records are in the database yet. Let's do the commit via
 Zope.
 
+    >>> db._transaction.active
+    True
     >>> transaction.commit()
     >>> db.session.new
     set([])

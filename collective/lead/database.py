@@ -136,9 +136,11 @@ class Database(object):
     @property
     def metadata(self):
         if self._engine is None:
-            self._initialize_engine()
+            ignore = self.engine
         elif not self._metadata.is_bound():
-            self._metadata.bind = self._engine
+            self._metadata.bind = self.engine
+        else:
+            ignore = self.engine # ensure a transaction is active
         return self._metadata
 
     def assign_mapper(self, klass, *args, **kwargs):
