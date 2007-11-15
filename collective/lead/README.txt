@@ -81,7 +81,7 @@ We'll create the subclass for our test database:
     ...                      sa.Column('table1_id', sa.Integer, sa.ForeignKey('table1.id'),nullable=False, index=True), )
     ... 
     ...     def _setup_mappers(self, tables, mappers):
-    ...         mappers['table1'] = sel.assign_mapper(TableOne, tables['table1'])
+    ...         mappers['table1'] = self.assign_mapper(TableOne, tables['table1'])
     ...         mappers['table2'] = self.assign_mapper(TableTwo, tables['table2'],
     ...                                         properties = {
     ...                                             'table1' : sa.orm.relation(TableOne),
@@ -110,12 +110,6 @@ In application code, you can now get the database utility by name. The
 database utility tracks a threadlocal engine, threadlocal metadata, and
 a scoped session.
 
-When it is first requested, a new transaction will be begun. This
-transaction is joined to a Zope transaction, and will commit or roll back
-as appropriate when the request ends. Or, in other words, it should work --
-more or less -- as you'd expect. You should not need to worry about
-transactions (neither Zope nor SQL ones).
-
     >>> from zope.component import getUtility
     >>> db = getUtility(IDatabase, name='my.database')
 
@@ -139,8 +133,11 @@ yourself.
 Managing transactions
 ---------------------
 
-Transaction is automatically managed by the session object.
-(see http://www.sqlalchemy.org/docs/04/session.html#unitofwork_managing)
+When it is first requested, a new transaction will be begun. This
+transaction is joined to a Zope transaction, and will commit or roll back
+as appropriate when the request ends. Or, in other words, it should work --
+more or less -- as you'd expect. You should not need to worry about
+transactions (neither Zope nor SQL ones).
 
     >>> object1 = TableOne()
     >>> object1.column = "column"
