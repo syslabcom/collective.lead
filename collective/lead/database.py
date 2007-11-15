@@ -46,7 +46,7 @@ class Database(object):
 
     implements(IConfigurableDatabase)
 
-    _Session = scoped_session(sessionmaker(autoflush=False,
+    _Session = scoped_session(sessionmaker(autoflush=True,
                                            transactional=True,
                                            extension=SASessionExtension()))
 
