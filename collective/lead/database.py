@@ -1,8 +1,7 @@
 import threading
 import sqlalchemy
 
-from sqlalchemy.orm.session import Session
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.orm.session import SessionExtension
 
 from zope.interface import implements
@@ -47,10 +46,16 @@ class Database(object):
 
     implements(IConfigurableDatabase)
 
+    _Session = scoped_session(sessionmaker(autoflush=False,
+                                           transactional=True,
+                                           extension=SASessionExtension()))
+
     def __init__(self):
         self._threadlocal = threading.local()
+        self._metadata = sqlalchemy.ThreadLocalMetaData()
         self.tables = {}
         self.mappers = {}
+        self.ormclasses = {}
         
     # IConfigurableDatabase implementation - subclasses should override these
    
@@ -60,11 +65,14 @@ class Database(object):
         
     @property
     def _engine_properties(self):
-        return {}
-        
+        return dict(strategy = 'threadlocal',
+                    convert_unicode = True,
+                    encoding = 'utf-8',
+                    )
+    
     def _setup_tables(self, metadata, tables):
         raise NotImplemented("You must implement the _setup_tables() method")
-        
+    
     def _setup_mappers(self, tables, mappers):
         # Mappers are not strictly necessary
         pass
@@ -73,27 +81,25 @@ class Database(object):
     
     def invalidate(self):
         self._initialize_engine()
-        
+    
     # IDatabase implementation - code using (not setting up) the database
     # uses this
     
     @property
     def session(self):
-        if getattr(self._threadlocal, 'session', None) is None:
-            # Without this, we may not have mapped things properly, nor
-            # will we necessarily start a transaction when the client
-            # code begins to use the session.
-            ignore = self.engine
-            self._threadlocal.session = self._sessionmaker()
-        return self._threadlocal.session
+        """Scoped session object for the current thread
+        """
+        ignore = self.metadata
+        return self._Session()
     
     @property
     def connection(self):
-        return self.engine.contextual_connect()
+        """Get a transaction-aware connection from the session
+        """
+        return self.session.connection()
     
     @property
     def engine(self):
-
         if self._engine is None:
             self._initialize_engine()
             
@@ -110,26 +116,16 @@ class Database(object):
             kwargs['strategy'] = 'threadlocal'
         if 'convert_unicode' not in kwargs:
             kwargs['convert_unicode'] = True
+        if 'encoding' not in kwargs:
+            kwargs['encoding'] = 'utf-8'
         
-        engine = sqlalchemy.create_engine(self._url, **kwargs)
-        metadata = sqlalchemy.MetaData(engine)
+        self._engine = sqlalchemy.create_engine(self._url, **kwargs)
+        self._Session.configure(bind=self._engine)
+        self._metadata.bind = self._engine
         
-        # We will only initialize once, but we may rebind metadata if
-        # necessary
-
         if not self.tables:
-            self._setup_tables(metadata, self.tables)
+            self._setup_tables(self._metadata, self.tables)
             self._setup_mappers(self.tables, self.mappers)
-        else:
-            for name, table in self.tables.items():
-                self.tables[name] = table.tometadata(self._metadata)
-        
-        self._engine = engine
-        self._metadata = metadata
-        self._sessionmaker = sqlalchemy.orm.sessionmaker(bind=self._engine, 
-                                                 autoflush=True,
-                                                 transactional=True,
-                                                 extension=SASessionExtension())
          
     @property
     def _transaction(self):
@@ -141,9 +137,29 @@ class Database(object):
     def metadata(self):
         if self._engine is None:
             self._initialize_engine()
+        elif not self._metadata.is_bound():
+            self._metadata.bind = self._engine
         return self._metadata
 
-    _sessionmaker = None
+    def assign_mapper(self, klass, *args, **kwargs):
+        """Use the Session.mapper, which adds a query attribute to
+           each mapped class. Tracks the mapped class, so that it
+           can be referenced as an attribute.
+        """
+        self.ormclasses[klass.__name__] = klass
+        return self._Session.mapper(klass, *args, **kwargs)
+
+    def __getattr__(self, name):
+        """Allow access to mapped classes as attributes. To work, this
+           requires that the defined mappers use our assign_mapper()
+           rather than 
+        """
+        # ensure things are set up for this thread
+        ignore = self.metadata
+        if name in self.ormclasses:
+            return self.ormclasses[name]
+        raise AttributeError, '%r object has no attribute %r' % \
+            (self.__class__.__name__, name)
+
     _engine = None
-    _metadata = None
     _tx = None
