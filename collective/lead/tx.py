@@ -36,14 +36,14 @@ class ThreadlocalDatabaseTransactions(object):
         
     def rollback(self):
         self.context.session.rollback()
-        self.context.session.clear()
+        self.context.session.close()
         self.context._threadlocal.active = False
-        self.context._threadlocal.session = None
+        #self.context._threadlocal.session = None
     
     def commit(self):
         self.context.session.commit()
         self.context._threadlocal.active = False
-        self.context._threadlocal.session = None
+        #self.context._threadlocal.session = None
     
     def flush(self):
         self.context.session.flush()
