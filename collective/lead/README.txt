@@ -106,7 +106,7 @@ you should not need to worry about transactions (neither Zope nor SQL ones).
 First we initialize the database
     >>> db.metadata.drop_all()
     >>> db.metadata.create_all()
-    >>> db.session.query(TableOne).list()
+    >>> db.session.query(TableOne).all()
     []
     
     >>> db.connection.execute("SELECT * FROM table1")
@@ -121,16 +121,15 @@ Transaction is automatically managed by the session object.
     >>> object1 = TableOne()
     >>> object1.column = "column"
     >>> db.session.save(object1)
-    >>> db.session.query(TableOne).get_by(column="column") == object1
+    >>> db.session.query(TableOne).filter_by(column="column").one() == object1
     True
 
-Object are automatically flushed by the session.
+Objects are automatically flushed by the session.
     
     >>> db.connection.execute("SELECT * FROM table1").fetchall()
     [(1, u'column')]
     >>> db.session.rollback()
-    >>> db.session.query(TableOne).get_by(column="column")
-    >>> db.connection.execute("SELECT * FROM table1").fetchall()
+    >>> db.session.query(TableOne).filter_by(column="column").all()
     []
     >>> object1 = TableOne()
     >>> object1.column = "column"
