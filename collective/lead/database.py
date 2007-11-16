@@ -32,6 +32,9 @@ class SASessionExtension(SessionExtension):
     def after_flush(self, session, flush_context):
         notify(SessionFlushedEvent(session))
 
+    def after_commit(self, session):
+        pass
+
 
 class Database(object):
     """Base class for database utilities. You are supposed to subclass

@@ -88,7 +88,7 @@ We'll create the subclass for our test database:
     ...                                             })
         
 
-The database utility can now be registered using zcml:
+The database utility can now be registered using zcml::
 
  <utility
     provides="collective.lead.interfaces.IDatabase"
@@ -107,8 +107,8 @@ Using the database connection
 -----------------------------
 
 In application code, you can now get the database utility by name. The
-database utility tracks a threadlocal engine, threadlocal metadata, and
-a scoped session.
+database utility tracks a threadlocal engine, threadlocal metadata, and a
+scoped, threadlocal session.
 
     >>> from zope.component import getUtility
     >>> db = getUtility(IDatabase, name='my.database')
@@ -120,26 +120,35 @@ First we initialize the database:
     >>> db.session.query(TableOne).all()
     []
 
-Since the mapped classes are also available as attributes, we can also
-write that last query as:
+Since the mapped classes are available as attributes, we can also write
+that last query as:
+
     >>> db.TableOne.query.all()
     []
 
+**Note**: It's always safest to access a mapped class via the database
+utility. On access, the utility guarantees that the tables and mappers have
+been set up and that a transaction is active for the current thread.  If you
+simply use the class (e.g. ``TableOne.query.all()`` or ``obj = TableOne()``),
+the setup for the current thread may not be in place.
+
 The connection is also available, in case you want to build SQL statements
-yourself.
+yourself. The connection supplied here actually participates in the session's
+transaction context.
+
     >>> db.connection.execute("SELECT * FROM table1")
     <sqlalchemy.engine.base.ResultProxy object at ...>
 
 Managing transactions
 ---------------------
 
-When it is first requested, a new transaction will be begun. This
-transaction is joined to a Zope transaction, and will commit or roll back
-as appropriate when the request ends. Or, in other words, it should work --
-more or less -- as you'd expect. You should not need to worry about
-transactions (neither Zope nor SQL ones).
-
-    >>> object1 = TableOne()
+When it is first requested, a new transaction is begun. This transaction is
+joined to a Zope transaction, and will commit or roll back as appropriate
+when the request ends. Or, in other words, it should work -- more or less --
+as you'd expect. You should not need to worry about transactions (neither
+Zope nor SQL ones).
+				   
+    >>> object1 = db.TableOne()
     >>> object1.column = "column"
     >>> db.session.save(object1)
 
@@ -148,7 +157,7 @@ Objects are automatically flushed by the session.
     >>> db.session.query(TableOne).filter_by(column="column").one() == object1
     True
 
-And the data can be accessed both via ORM and "raw" SQL.
+And the data can be accessed both via ORM and via SQL expressions.
 
     >>> db.TableOne.query.first()
     TableOne(id=1, column='column')
@@ -183,6 +192,12 @@ Let's try it with the Zope transaction.
     >>> import transaction
     >>> obj1 = db.TableOne()
     >>> obj1.column = 'fkey test'
+
+As an aside, new instances are automatically saved upon construction when you
+use the ``assign_mapper()`` method (which wraps the contextual
+``Session.mapper``). So if you use ``assign_mapper()``, there's no need to
+even call ``db.session.save()``.
+
     >>> db.session.new
     set([TableOne(id=None, column='fkey test')])
     >>> obj2 = db.TableTwo()
@@ -193,8 +208,6 @@ Let's try it with the Zope transaction.
 Neither of the new records are in the database yet. Let's do the commit via
 Zope.
 
-    >>> db._transaction.active
-    True
     >>> transaction.commit()
     >>> db.session.new
     set([])
