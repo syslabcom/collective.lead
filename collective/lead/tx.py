@@ -4,7 +4,7 @@ import threading
 from zope.interface import implements
 from zope.component import adapts
 
-from transaction.interfaces import IDataManager
+from transaction.interfaces import ISavepointDataManager, IDataManagerSavepoint
 from collective.lead.interfaces import ITransactionAware
 
 from collective.lead.database import Database
@@ -53,7 +53,7 @@ class ThreadlocalDatabaseDataManager(object):
     transactions
     """
 
-    implements(IDataManager)
+    implements(ISavepointDataManager)
 
     def __init__(self, tx):
         self.tx = tx
@@ -85,3 +85,22 @@ class ThreadlocalDatabaseDataManager(object):
         # which allows Zope to roll back its transaction if the RDBMS 
         # threw a conflict error.
         return "~lead:%d" % id(self.tx)
+    
+    def savepoint(self):
+        return Savepoint(self.tx.context.session)
+
+class Savepoint:
+    implements(IDataManagerSavepoint)
+
+    def __init__(self, session):
+        self.session = session
+        self.txn = session.begin_nested()
+
+    def rollback(self):
+        self.txn.rollback()
+        self.session.clear()
+    
+    @property
+    def valid(self):
+        return True # needs work.
+        
