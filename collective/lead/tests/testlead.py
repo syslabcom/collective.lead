@@ -1,4 +1,7 @@
 # Much inspiration from z3c.sqlalchemy/trunk/src/z3c/sqlalchemy/tests/testSQLAlchemy.py
+# You may want to run the tests with your database. To do so set the environment variable
+# TEST_DSN to the connection url. e.g.:
+# export TEST_DSN=postgres://plone:plone@localhost/test
 
 import os
 import unittest
@@ -41,7 +44,7 @@ class Skill(SimpleModel):
 
 class TestDatabase(Database):
 
-    _url = 'sqlite:///test'
+    _url = os.environ.get('TEST_DSN', 'sqlite:///test')
     
     def _setup_tables(self, metadata, tables):
         tables['users'] = sa.Table('users', metadata,
@@ -67,7 +70,6 @@ class TestDatabase(Database):
 # Setup the database
 def setup_db():
     db = TestDatabase()
-    db._initialize_engine(create_all=True)
     provideUtility(db, IDatabase, name=DB_NAME)
 
 setup_db()
@@ -78,6 +80,10 @@ class LeadTests(unittest.TestCase):
     @property
     def db(self):
         return getUtility(IDatabase, name=DB_NAME)
+    
+    def setUp(self):
+        ignore = self.db.session
+        self.db._metadata.create_all()
         
     def tearDown(self):
         transaction.abort()
@@ -106,14 +112,42 @@ class LeadTests(unittest.TestCase):
         user.skills.append(Skill(id=1, name='Zope'))
         session.flush()
     
-    def testTransactioJoining(self):
+    def testTransactionJoining(self):
         transaction.abort() # clean slate
         t = transaction.get()
         self.failIf([r for r in t._resources if r.__class__ is LeadDataManager],
              "Joined transaction too early")
-        ignore = db.session
+        ignore = self.db.session
         self.failUnless([r for r in t._resources if r.__class__ is LeadDataManager],
              "Not joined transaction")
+    
+    def testSavepoint(self):
+        t = transaction.get()
+        session = self.db.session
+        query = session.query(User)
+        self.failIf(query.all(), "Users table should be empty")
+        
+        s0 = t.savepoint(optimistic=True) # this should always work
+        
+        if self.db.engine.url.drivername in tx.NO_SAVEPOINT_SUPPORT:
+            return # sqlite databases do not support savepoints
+        
+        s1 = t.savepoint()
+        session.save(User(id=1, firstname='udo', lastname='juergens'))
+        session.flush()
+        self.failUnless(len(query.all())==1, "Users table should have one row")
+        
+        s2 = t.savepoint()
+        session.save(User(id=2, firstname='heino', lastname='n/a'))
+        session.flush()
+        self.failUnless(len(query.all())==2, "Users table should have two rows")
+        
+        s2.rollback()
+        self.failUnless(len(query.all())==1, "Users table should have one row")
+        
+        s1.rollback()
+        self.failIf(query.all(), "Users table should be empty")
+        
 
 def test_suite():
     from unittest import TestSuite, makeSuite

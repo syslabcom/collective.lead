@@ -4,10 +4,12 @@ import threading
 from zope.interface import implements
 from zope.component import adapts
 
-from transaction.interfaces import IDataManager
+from transaction.interfaces import ISavepointDataManager, IDataManagerSavepoint
 from collective.lead.interfaces import ITransactionAware
 
 from collective.lead.database import Database
+
+NO_SAVEPOINT_SUPPORT = frozenset(['sqlite'])
 
 class ThreadlocalDatabaseTransactions(object):
     """Implementation-specific adapter for transaction awareness
@@ -44,13 +46,14 @@ class ThreadlocalDatabaseTransactions(object):
         self.context.engine.commit()
         self.context._threadlocal.active = False
         self.context._threadlocal.session = None
-    
+
+
 class ThreadlocalDatabaseDataManager(object):
     """Use join the transactions of a threadlocal engine to Zope
     transactions
     """
 
-    implements(IDataManager)
+    implements(ISavepointDataManager)
 
     def __init__(self, tx):
         self.tx = tx
@@ -82,3 +85,27 @@ class ThreadlocalDatabaseDataManager(object):
         # which allows Zope to roll back its transaction if the RDBMS 
         # threw a conflict error.
         return "~lead:%d" % id(self.tx)
+
+    @property
+    def savepoint(self):
+        if self.tx.context.engine.url.drivername in NO_SAVEPOINT_SUPPORT:
+            raise AttributeError('savepoint')
+        else:
+            return self._savepoint
+    
+    def _savepoint(self):
+        return SessionSavepoint(self.tx.context.session)
+
+
+class SessionSavepoint:
+    implements(IDataManagerSavepoint)
+
+    def __init__(self, session):
+        self.session = session
+        self.transaction = session.begin_nested()
+        session.flush() # do I want to do this? Probably.
+
+    def rollback(self):
+        # no need to check validity, sqlalchemy should raise an exception. I think.
+        self.transaction.rollback()
+        self.session.clear() # remove when Session.rollback does an attribute_manager.rollback
