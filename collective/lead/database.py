@@ -78,7 +78,7 @@ class Database(object):
 
     # Helper methods
     
-    def _initialize_engine(self, create_all=False):
+    def _initialize_engine(self):
         kwargs = dict(self._engine_properties).copy()
         if 'strategy' not in kwargs:
             kwargs['strategy'] = 'threadlocal'
@@ -93,8 +93,6 @@ class Database(object):
 
         if not self.tables:
             self._setup_tables(metadata, self.tables)
-            if create_all:
-                metadata.create_all()
             self._setup_mappers(self.tables, self.mappers)
         else:
             for name, table in self.tables.items():
