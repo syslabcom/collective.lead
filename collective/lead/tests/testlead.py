@@ -10,6 +10,9 @@ from collective.lead.interfaces import IDatabase, ITransactionAware
 from zope.component import provideAdapter, provideUtility, getUtility
 DB_NAME = 'collective.lead.tests.testlead'
 
+LeadDataManager = tx.ThreadlocalDatabaseDataManager
+
+
 # Setup adapters, (what configure.zcml does)
 provideAdapter(
     tx.ThreadlocalDatabaseTransactions,
@@ -102,6 +105,15 @@ class LeadTests(unittest.TestCase):
         user = session.query(User).filter_by(firstname='foo')[0]
         user.skills.append(Skill(id=1, name='Zope'))
         session.flush()
+    
+    def testTransactioJoining(self):
+        transaction.abort() # clean slate
+        t = transaction.get()
+        self.failIf([r for r in t._resources if r.__class__ is LeadDataManager],
+             "Joined transaction too early")
+        ignore = db.session
+        self.failUnless([r for r in t._resources if r.__class__ is LeadDataManager],
+             "Not joined transaction")
 
 def test_suite():
     from unittest import TestSuite, makeSuite
