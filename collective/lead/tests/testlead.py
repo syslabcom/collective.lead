@@ -111,7 +111,7 @@ class LeadTests(unittest.TestCase):
         t = transaction.get()
         self.failIf([r for r in t._resources if r.__class__ is LeadDataManager],
              "Joined transaction too early")
-        ignore = db.session
+        ignore = self.db.session
         self.failUnless([r for r in t._resources if r.__class__ is LeadDataManager],
              "Not joined transaction")
 
