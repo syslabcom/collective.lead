@@ -58,7 +58,7 @@ class Database(object):
             # will we necessarily start a transaction when the client
             # code begins to use the session.
             ignore = self.engine
-            self._threadlocal.session = Session()
+            self._threadlocal.session = Session(twophase=True)
         return self._threadlocal.session
     
     @property
@@ -78,7 +78,7 @@ class Database(object):
 
     # Helper methods
     
-    def _initialize_engine(self):
+    def _initialize_engine(self, create_all=False):
         kwargs = dict(self._engine_properties).copy()
         if 'strategy' not in kwargs:
             kwargs['strategy'] = 'threadlocal'
@@ -93,6 +93,8 @@ class Database(object):
 
         if not self.tables:
             self._setup_tables(metadata, self.tables)
+            if create_all:
+                metadata.create_all()
             self._setup_mappers(self.tables, self.mappers)
         else:
             for name, table in self.tables.items():
