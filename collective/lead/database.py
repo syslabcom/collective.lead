@@ -58,7 +58,7 @@ class Database(object):
             # will we necessarily start a transaction when the client
             # code begins to use the session.
             ignore = self.engine
-            self._threadlocal.session = Session(twophase=True)
+            self._threadlocal.session = Session()
         return self._threadlocal.session
     
     @property
