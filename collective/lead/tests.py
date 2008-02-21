@@ -1,13 +1,20 @@
 # Much inspiration from z3c.sqlalchemy/trunk/src/z3c/sqlalchemy/tests/testSQLAlchemy.py
+#
 # You may want to run the tests with your database. To do so set the environment variable
 # TEST_DSN to the connection url. e.g.:
 # export TEST_DSN=postgres://plone:plone@localhost/test
+#
+# To test the commit code export TEST_COMMIT=True 
+#
+# NOTE: The sqlite that ships with Mac OS X 10.4 is buggy. Install a newer version (3.5.6)
+#       and rebuild pysqlite2 against it.
+
 
 import os
 import unittest
 import transaction
 import sqlalchemy as sa
-from sqlalchemy import orm
+from sqlalchemy import orm, sql
 from collective.lead import Database, tx
 from collective.lead.interfaces import IDatabase, ITransactionAware
 from zope.component import provideAdapter, provideUtility, getUtility
@@ -25,7 +32,7 @@ provideAdapter(
 
 
 class SimpleModel(object):
-    
+
     def __init__(self, **kw):
         for k, v in kw.items():
             setattr(self, k, v)
@@ -47,25 +54,25 @@ class TestDatabase(Database):
     _url = os.environ.get('TEST_DSN', 'sqlite:///test')
     
     def _setup_tables(self, metadata, tables):
-        tables['users'] = sa.Table('users', metadata,
+        tables['test_users'] = sa.Table('test_users', metadata,
             sa.Column('id', sa.Integer, primary_key=True),
             sa.Column('firstname', sa.Text),
             sa.Column('lastname', sa.Text),
             )
-        tables['skills'] = sa.Table('skills', metadata,
+        tables['test_skills'] = sa.Table('test_skills', metadata,
             sa.Column('id', sa.Integer, primary_key=True),
             sa.Column('user_id', sa.Integer),
             sa.Column('name', sa.Text),
-            sa.ForeignKeyConstraint(('user_id',), ('users.id',)),
+            sa.ForeignKeyConstraint(('user_id',), ('test_users.id',)),
             )
 
     def _setup_mappers(self, tables, mappers):
-        mappers['users'] = orm.mapper(User, tables['users'],
+        mappers['test_users'] = orm.mapper(User, tables['test_users'],
             properties = {
                 'skills': orm.relation(Skill,
-                    primaryjoin=tables['users'].columns['id']==tables['skills'].columns['user_id']),
+                    primaryjoin=tables['test_users'].columns['id']==tables['test_skills'].columns['user_id']),
             })
-        mappers['skills'] = orm.mapper(Skill, tables['skills'])
+        mappers['test_skills'] = orm.mapper(Skill, tables['test_skills'])
 
 # Setup the database
 def setup_db():
@@ -73,7 +80,7 @@ def setup_db():
     provideUtility(db, IDatabase, name=DB_NAME)
 
 setup_db()
-    
+
 
 class LeadTests(unittest.TestCase):
 
@@ -83,8 +90,9 @@ class LeadTests(unittest.TestCase):
     
     def setUp(self):
         ignore = self.db.session
+        self.db._metadata.drop_all()
         self.db._metadata.create_all()
-        
+    
     def tearDown(self):
         transaction.abort()
 
@@ -104,7 +112,18 @@ class LeadTests(unittest.TestCase):
         d = row1.asDict()
         self.assertEqual(d, {'firstname' : 'udo', 'lastname' : 'juergens', 'id' : 1})
         
-    def testXXRelations(self):
+        # bypass the session machinary
+        stmt = sql.select(query.table.columns).order_by('id')
+        results = self.db.connection.execute(stmt)
+        self.assertEqual(results.fetchall(), [(1, u'udo', u'juergens'), (2, u'heino', u'n/a')])
+        
+        # and rollback
+        transaction.abort()
+        self.db._metadata.create_all() # for some reason this is not required by sqlite
+        results = self.db.connection.execute(stmt)
+        self.assertEqual(results.fetchall(), [])
+        
+    def testRelations(self):
         session = self.db.session
         session.save(User(id=1,firstname='foo', lastname='bar'))
 
@@ -122,6 +141,7 @@ class LeadTests(unittest.TestCase):
              "Not joined transaction")
     
     def testSavepoint(self):
+        use_savepoint = not self.db.engine.url.drivername in tx.NO_SAVEPOINT_SUPPORT
         t = transaction.get()
         session = self.db.session
         query = session.query(User)
@@ -129,8 +149,7 @@ class LeadTests(unittest.TestCase):
         
         s0 = t.savepoint(optimistic=True) # this should always work
         
-        if self.db.engine.url.drivername in tx.NO_SAVEPOINT_SUPPORT:
-            return # sqlite databases do not support savepoints
+        if not use_savepoint: return # sqlite databases do not support savepoints
         
         s1 = t.savepoint()
         session.save(User(id=1, firstname='udo', lastname='juergens'))
@@ -147,7 +166,56 @@ class LeadTests(unittest.TestCase):
         
         s1.rollback()
         self.failIf(query.all(), "Users table should be empty")
+    
+    def testCommit(self):
+        if not os.environ.get('TEST_COMMIT'): return # skip this test
+        try:
+            use_savepoint = not self.db.engine.url.drivername in tx.NO_SAVEPOINT_SUPPORT
+            session = self.db.session
+            query = session.query(User)
+            rows = query.all()
+            self.assertEqual(len(rows), 0)
+
+            session.save(User(id=1, firstname='udo', lastname='juergens'))
+            session.save(User(id=2, firstname='heino', lastname='n/a'))
+            session.flush()
+
+            rows = query.order_by(query.table.c.id).all()
+            self.assertEqual(len(rows), 2)
+            row1 = rows[0]
+            d = row1.asDict()
+            self.assertEqual(d, {'firstname' : 'udo', 'lastname' : 'juergens', 'id' : 1})
+    
+            transaction.commit()
+    
+            rows = query.order_by(query.table.c.id).all()
+            self.assertEqual(len(rows), 2)
+            row1 = rows[0]
+            d = row1.asDict()
+            self.assertEqual(d, {'firstname' : 'udo', 'lastname' : 'juergens', 'id' : 1})
+    
+            # bypass the session machinary
+            stmt = sql.text('SELECT * FROM test_users;')
+            results = self.db.connection.execute(stmt)
+            self.assertEqual(len(results.fetchall()), 2)
+    
+            if use_savepoint:
+                # lets just test that savepoints don't affect commits
+                t = transaction.get()
+                rows = query.order_by(query.table.c.id).all()
         
+                s1 = t.savepoint()
+                session.delete(rows[1])
+                session.flush()
+                transaction.commit()
+        
+                # bypass the session machinary
+                results = self.db.connection.execute(stmt)
+                self.assertEqual(len(results.fetchall()), 1)
+        finally:
+            transaction.abort()
+            self.db._metadata.drop_all()
+            transaction.commit()
 
 def test_suite():
     from unittest import TestSuite, makeSuite
