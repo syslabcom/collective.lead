@@ -20,12 +20,12 @@ from collective.lead.interfaces import IDatabase, ITransactionAware
 from zope.component import provideAdapter, provideUtility, getUtility
 DB_NAME = 'collective.lead.tests.testlead'
 
-LeadDataManager = tx.ThreadlocalDatabaseDataManager
+LeadDataManager = tx.SessionDataManager
 
 
 # Setup adapters, (what configure.zcml does)
 provideAdapter(
-    tx.ThreadlocalDatabaseTransactions,
+    tx.DatabaseTransactions,
     adapts=(Database,),
     provides=ITransactionAware,
     )
@@ -52,6 +52,10 @@ class Skill(SimpleModel):
 class TestDatabase(Database):
 
     _url = os.environ.get('TEST_DSN', 'sqlite:///test')
+    
+    if _url.startswith('sqlite'):
+        _session_properties = Database._session_properties.copy()
+        _session_properties['twophase'] = False
     
     def _setup_tables(self, metadata, tables):
         tables['test_users'] = sa.Table('test_users', metadata,
@@ -80,6 +84,35 @@ def setup_db():
     provideUtility(db, IDatabase, name=DB_NAME)
 
 setup_db()
+
+class DummyException(Exception):
+    pass
+    
+
+class DummyDataManager(object):
+    def __init__(self, key):
+        self.key = key
+    
+    def abort(self, trans):
+        pass
+
+    def tpc_begin(self, trans):
+        pass
+    
+    def commit(self, trans):
+        pass
+
+    def tpc_vote(self, trans):
+        raise DummyException('DummyDataManager cannot commit')
+
+    def tpc_finish(self, trans):
+        pass
+
+    def tpc_abort(self, trans):
+        pass
+    
+    def sortKey(self):
+        return self.key
 
 
 class LeadTests(unittest.TestCase):
@@ -185,8 +218,13 @@ class LeadTests(unittest.TestCase):
             row1 = rows[0]
             d = row1.asDict()
             self.assertEqual(d, {'firstname' : 'udo', 'lastname' : 'juergens', 'id' : 1})
-    
+            
             transaction.commit()
+            
+            if self.db.engine.url.drivername == 'postgres':
+                stmt = sql.text('SELECT gid FROM pg_prepared_xacts WHERE database = :database;')
+                results = self.db.connection.execute(stmt, database=self.db.engine.url.database)
+                self.assertEqual(len(results.fetchall()), 0, "Test no outstanding prepared transactions")
     
             rows = query.order_by(query.table.c.id).all()
             self.assertEqual(len(rows), 2)
@@ -212,8 +250,29 @@ class LeadTests(unittest.TestCase):
                 # bypass the session machinary
                 results = self.db.connection.execute(stmt)
                 self.assertEqual(len(results.fetchall()), 1)
+    
+    
+            # Test that we clean up after a tpc_abort
+            t = transaction.get()
+            dummy = DummyDataManager(key='~~~dummy.last')
+            t.join(dummy)
+            session = self.db.session
+            query = session.query(User)
+            rows = query.all()
+            session.delete(rows[0])
+            session.flush()
+            
+            self.assertRaises(DummyException, t.commit)
+            
+            transaction.begin()            
+            if self.db.engine.url.drivername == 'postgres':
+                stmt = sql.text('SELECT gid FROM pg_prepared_xacts WHERE database = :database;')
+                results = self.db.connection.execute(stmt, database=self.db.engine.url.database)
+                self.assertEqual(len(results.fetchall()), 0, "Test no outstanding prepared transactions")
+
         finally:
             transaction.abort()
+            transaction.begin()
             self.db._metadata.drop_all()
             transaction.commit()
 
