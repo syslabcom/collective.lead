@@ -3,6 +3,7 @@
 # You may want to run the tests with your database. To do so set the environment variable
 # TEST_DSN to the connection url. e.g.:
 # export TEST_DSN=postgres://plone:plone@localhost/test
+# export TEST_DSN=mssql://plone:plone@/test?dsn=mydsn
 #
 # To test the commit code export TEST_COMMIT=True 
 #
@@ -21,6 +22,9 @@ from zope.component import provideAdapter, provideUtility, getUtility
 DB_NAME = 'collective.lead.tests.testlead'
 
 LeadDataManager = tx.SessionDataManager
+
+TEST_COMMIT = os.environ.get('TEST_COMMIT')
+TEST_DSN = os.environ.get('TEST_DSN', 'sqlite:///test')
 
 
 # Setup adapters, (what configure.zcml does)
@@ -51,22 +55,22 @@ class Skill(SimpleModel):
 
 class TestDatabase(Database):
 
-    _url = os.environ.get('TEST_DSN', 'sqlite:///test')
+    _url = TEST_DSN
     
-    if _url.startswith('sqlite'):
+    if _url.startswith('sqlite') or _url.startswith('mssql'):
         _session_properties = Database._session_properties.copy()
         _session_properties['twophase'] = False
     
     def _setup_tables(self, metadata, tables):
         tables['test_users'] = sa.Table('test_users', metadata,
             sa.Column('id', sa.Integer, primary_key=True),
-            sa.Column('firstname', sa.Text),
-            sa.Column('lastname', sa.Text),
+            sa.Column('firstname', sa.VARCHAR(255)), # mssql cannot do equality on a text type
+            sa.Column('lastname', sa.VARCHAR(255)),
             )
         tables['test_skills'] = sa.Table('test_skills', metadata,
             sa.Column('id', sa.Integer, primary_key=True),
             sa.Column('user_id', sa.Integer),
-            sa.Column('name', sa.Text),
+            sa.Column('name', sa.VARCHAR(255)),
             sa.ForeignKeyConstraint(('user_id',), ('test_users.id',)),
             )
 
@@ -201,7 +205,7 @@ class LeadTests(unittest.TestCase):
         self.failIf(query.all(), "Users table should be empty")
     
     def testCommit(self):
-        if not os.environ.get('TEST_COMMIT'): return # skip this test
+        if not TEST_COMMIT: return # skip this test
         try:
             use_savepoint = not self.db.engine.url.drivername in tx.NO_SAVEPOINT_SUPPORT
             session = self.db.session

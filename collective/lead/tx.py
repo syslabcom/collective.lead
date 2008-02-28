@@ -74,11 +74,12 @@ class SessionDataManager(object):
             self.tx.prepare()
         else:
             self.tx.commit() # for a one phase data manager commit last in tpc_vote
+            self._cleanup()
 
     def tpc_finish(self, trans):
         if self.session.twophase:
             self.tx.commit()
-        self._cleanup()
+            self._cleanup()
 
     def tpc_abort(self, trans):
         if self.tx is not None: # we may not have voted, and been aborted already
