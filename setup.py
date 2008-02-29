@@ -26,7 +26,7 @@ setup(name='collective.lead',
       zip_safe=False,
       install_requires=[
           'setuptools',
-          'SQLAlchemy>=0.3.10,<0.4dev',
+          'SQLAlchemy>=0.3.10,<0.5dev',
       ],
       entry_points="""
       # -*- Entry points: -*-
