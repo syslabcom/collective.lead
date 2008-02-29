@@ -7,7 +7,7 @@ setup(name='collective.lead',
       version=version,
       description="SQLAlchemy/Zope2 transaction integration",
       long_description=
-          open(os.path.join("collective", "read", "README.txt")).read()+"\n"+
+          open(os.path.join("collective", "lead", "README.txt")).read()+"\n"+
           open(os.path.join("docs", "HISTORY.txt")).read(),
       classifiers=[
         "Framework :: Zope2",
