@@ -17,6 +17,10 @@ no CRUD operations, and no dancing polar bears.
 You need to understand SQLAlchemy for this package and this README to make 
 any sense. See http://sqlalchemy.org/docs/.
 
+Please note that this package is only meant to be used as a tool in other
+packages; you can not install it directly in a Zope site.
+
+
 The use case
 ------------
 
