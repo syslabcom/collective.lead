@@ -1,6 +1,5 @@
-=================
- collective.lead
-=================
+Introduction
+============
 
 The lead part of the alchemist's toolkit.
 
