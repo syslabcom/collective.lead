@@ -14,6 +14,7 @@
 import os
 import unittest
 import transaction
+import threading
 import sqlalchemy as sa
 from sqlalchemy import orm, sql
 from collective.lead import Database, tx
@@ -25,7 +26,6 @@ LeadDataManager = tx.SessionDataManager
 
 TEST_COMMIT = os.environ.get('TEST_COMMIT')
 TEST_DSN = os.environ.get('TEST_DSN', 'sqlite:///test')
-
 
 # Setup adapters, (what configure.zcml does)
 provideAdapter(
@@ -57,7 +57,7 @@ class TestDatabase(Database):
 
     _url = TEST_DSN
     
-    if _url.startswith('sqlite') or _url.startswith('mssql'):
+    if _url.startswith('sqlite'):
         _session_properties = Database._session_properties.copy()
         _session_properties['twophase'] = False
     
@@ -91,11 +91,19 @@ setup_db()
 
 class DummyException(Exception):
     pass
-    
+ 
+class DummyTargetRaised(DummyException):
+    pass  
+
+class DummyTargetResult(DummyException):
+    pass
 
 class DummyDataManager(object):
-    def __init__(self, key):
+    def __init__(self, key, target=None, args=(), kwargs={}):
         self.key = key
+        self.target = target
+        self.args = args
+        self.kwargs = kwargs
     
     def abort(self, trans):
         pass
@@ -107,7 +115,14 @@ class DummyDataManager(object):
         pass
 
     def tpc_vote(self, trans):
-        raise DummyException('DummyDataManager cannot commit')
+        if self.target is not None:
+            try:
+                result = target(*self.args, **self.kwargs)
+            except Exception, e:
+                raise DummyTargetRaised(e)
+            raise DummyTargetResult(result)
+        else:
+            raise DummyException('DummyDataManager cannot commit')
 
     def tpc_finish(self, trans):
         pass
@@ -138,7 +153,7 @@ class LeadTests(unittest.TestCase):
         query = session.query(User)
         rows = query.all()
         self.assertEqual(len(rows), 0)
-
+               
         session.save(User(id=1, firstname='udo', lastname='juergens'))
         session.save(User(id=2, firstname='heino', lastname='n/a'))
         session.flush()
@@ -153,12 +168,6 @@ class LeadTests(unittest.TestCase):
         stmt = sql.select(query.table.columns).order_by('id')
         results = self.db.connection.execute(stmt)
         self.assertEqual(results.fetchall(), [(1, u'udo', u'juergens'), (2, u'heino', u'n/a')])
-        
-        # and rollback
-        transaction.abort()
-        self.db._metadata.create_all() # for some reason this is not required by sqlite
-        results = self.db.connection.execute(stmt)
-        self.assertEqual(results.fetchall(), [])
         
     def testRelations(self):
         session = self.db.session
@@ -212,6 +221,11 @@ class LeadTests(unittest.TestCase):
             query = session.query(User)
             rows = query.all()
             self.assertEqual(len(rows), 0)
+            
+            transaction.commit() # test a none modifying transaction works
+            session = self.db.session
+            query = session.query(User)
+            rows = query.all()
 
             session.save(User(id=1, firstname='udo', lastname='juergens'))
             session.save(User(id=2, firstname='heino', lastname='n/a'))
@@ -266,19 +280,60 @@ class LeadTests(unittest.TestCase):
             session.delete(rows[0])
             session.flush()
             
-            self.assertRaises(DummyException, t.commit)
+            try:
+                t.commit()
+            except DummyTargetResult, e:
+                result = e.args[0]
+                #XXX test that we have recover list here
+            except DummyTargetRaised, e:
+                raise e.args[0]
+            except DummyException, e:
+                pass
             
-            transaction.begin()            
-            if self.db.engine.url.drivername == 'postgres':
-                stmt = sql.text('SELECT gid FROM pg_prepared_xacts WHERE database = :database;')
-                results = self.db.connection.execute(stmt, database=self.db.engine.url.database)
-                self.assertEqual(len(results.fetchall()), 0, "Test no outstanding prepared transactions")
+            transaction.begin()   
+
+            if self.db.session.twophase:
+                self.assertEqual(len(self.db.connection.recover_twophase()), 0, "Test no outstanding prepared transactions")
 
         finally:
             transaction.abort()
             transaction.begin()
             self.db._metadata.drop_all()
             transaction.commit()
+    
+    def testThread(self):
+        global thread_error
+        thread_error = None
+        def target(db):
+            try:
+                session = db.session
+                db._metadata.drop_all()
+                db._metadata.create_all()
+            
+                query = session.query(User)
+                rows = query.all()
+                self.assertEqual(len(rows), 0)
+
+                session.save(User(id=1, firstname='udo', lastname='juergens'))
+                session.save(User(id=2, firstname='heino', lastname='n/a'))
+                session.flush()
+
+                rows = query.order_by(query.table.c.id).all()
+                self.assertEqual(len(rows), 2)
+                row1 = rows[0]
+                d = row1.asDict()
+                self.assertEqual(d, {'firstname' : 'udo', 'lastname' : 'juergens', 'id' : 1})
+            except Exception, err:
+                global thread_error
+                thread_error = err
+            transaction.abort()
+        
+        thread = threading.Thread(target=target, args=(self.db,))
+        thread.start()
+        thread.join()
+        if thread_error is not None:
+            raise thread_error # reraise in current thread
+        
 
 def test_suite():
     from unittest import TestSuite, makeSuite

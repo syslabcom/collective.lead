@@ -1,5 +1,4 @@
 import transaction
-import threading
 
 from zope.interface import implements
 from zope.component import adapts
@@ -7,7 +6,7 @@ from zope.component import adapts
 from transaction.interfaces import ISavepointDataManager, IDataManagerSavepoint
 from collective.lead.interfaces import ITransactionAware
 
-from collective.lead.database import Database
+from collective.lead.database import Database, _DIRTY_KEY
 from sqlalchemy.orm.scoping import ScopedSession
 
 NO_SAVEPOINT_SUPPORT = frozenset(['sqlite'])
@@ -21,27 +20,21 @@ class DatabaseTransactions(object):
     
     def __init__(self, context):
         self.context = context
-        self._Session = context._Session
-        self._threadlocal = threading.local()
 
     # Called by Database if you attempt to retrieve an engine where
     # transaction.active == False
 
-    def begin(self):
+    def begin(self, session):
         assert not self.active, "Transaction already in progress"
-        transaction.get().join(SessionDataManager(self))
-        self._threadlocal.active = True
+        transaction.get().join(SessionDataManager(self, session))
+        self.context._threadlocal.active = True
         
     @property
     def active(self):
-        return getattr(self._threadlocal, 'active', False)
+        return getattr(self.context._threadlocal, 'active', None)
     
     def deactivate(self):
-        self._threadlocal.active = False
-    
-    @property
-    def session(self):
-        return self._Session()
+        self.context._threadlocal.active = None
 
 
 class SessionDataManager(object):
@@ -51,12 +44,17 @@ class SessionDataManager(object):
     """
     
     implements(ISavepointDataManager)
+    # sometimes this only implements IDataManager. But it doesn't matter as transaction
+    # tests for the existance of the savepoint method.
 
-    def __init__(self, context):
-        assert context.session.transaction is None
-        self.context = context
-        self.session = context.session
-        self.tx = self.session.begin()
+    def __init__(self, context, session):
+        if session.transactional:
+            self.tx = session.transaction._iterate_parents()[-1]
+        else:
+            assert session.transaction is None
+            self.tx = session.begin()
+        self.context = context # only really needed for non transactional sessions
+        self.session = session
 
     def abort(self, trans):
         if self.tx is not None:
@@ -64,22 +62,26 @@ class SessionDataManager(object):
             self._cleanup()
 
     def tpc_begin(self, trans):
-        pass
+        self.session._autoflush()
     
     def commit(self, trans):
-        self.session._autoflush()
+        if not self.session.connection().info.get(_DIRTY_KEY, False):
+            self.abort(trans) # no work to do
+            
 
     def tpc_vote(self, trans):
-        if self.session.twophase:
-            self.tx.prepare()
-        else:
-            self.tx.commit() # for a one phase data manager commit last in tpc_vote
-            self._cleanup()
+        if self.tx is not None: # there may have been no work to do
+            if self.session.twophase:
+                self.tx.prepare()
+            else:
+                self.tx.commit() # for a one phase data manager commit last in tpc_vote
+                self._cleanup()
 
     def tpc_finish(self, trans):
-        if self.session.twophase:
-            self.tx.commit()
-            self._cleanup()
+        if self.tx is not None:
+            if self.session.twophase:
+                self.tx.commit()
+                self._cleanup()
 
     def tpc_abort(self, trans):
         if self.tx is not None: # we may not have voted, and been aborted already
@@ -92,6 +94,7 @@ class SessionDataManager(object):
         return "~lead:%d" % id(self.tx)
     
     def _cleanup(self):
+        self.session.connection().info[_DIRTY_KEY] = False
         self.session.close()
         self.tx = None
         self.context.deactivate()

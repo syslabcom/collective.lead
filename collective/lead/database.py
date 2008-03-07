@@ -2,12 +2,21 @@ import threading
 import sqlalchemy
 
 from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.orm.session import Session
+from sqlalchemy.orm.session import SessionExtension
 
 from zope.interface import implements
 
 from collective.lead.interfaces import IConfigurableDatabase
 from collective.lead.interfaces import ITransactionAware
+
+_DIRTY_KEY = 'lead:dirty'
+
+
+class DirtyAfterFlush(SessionExtension):
+    
+    def after_flush(self, session, flush_context):
+        session.connection().info[_DIRTY_KEY] = True
+
 
 class Database(object):
     """Base class for database utilities. You are supposed to subclass
@@ -23,15 +32,20 @@ class Database(object):
     implements(IConfigurableDatabase)
 
     def __init__(self):
-        self._Session = scoped_session(sessionmaker(**self._session_properties))
+        self._Session = scoped_session(sessionmaker(extension=DirtyAfterFlush(),
+                                                    **self._session_properties))
         self._metadata = sqlalchemy.ThreadLocalMetaData()
         self._engine = sqlalchemy.create_engine(self._url, **self._engine_properties)
         self._Session.configure(bind=self._engine)
+        self._threadlocal = threading.local()
+        # bound: thread local metadata is bound
+        # status: None, 'JOINED', or 'CHANGED'
+        self._tables = {}
+        self._mappers = {}
         self._metadata.bind = self._engine
-        self.tables = {}
-        self.mappers = {}
-        self._setup_tables(self._metadata, self.tables)
-        self._setup_mappers(self.tables, self.mappers)
+        self._setup_tables(self._metadata, self._tables)
+        self._setup_mappers(self._tables, self._mappers)
+        self._threadlocal.bound = True
         
     # IConfigurableDatabase implementation - subclasses should override these
     
@@ -50,7 +64,10 @@ class Database(object):
                                )
         
     def _setup_tables(self, metadata, tables):
-        raise NotImplemented("You must implement the _setup_tables() method")
+        """By default, reflect the metadata automatically
+        """
+        metadata.reflect()
+        self._tables = self.metadata.tables
         
     def _setup_mappers(self, tables, mappers):
         # Mappers are not strictly necessary
@@ -65,30 +82,55 @@ class Database(object):
     # IDatabase implementation - code using (not setting up) the database
     # uses this
     
+    def dirty(self):
+        """Call to indicate that there is work to be committed.
+        
+        Normal session operations will call this automatically.
+        Call this if you operate on the connection directly.
+        """
+        self.connection.info[_DIRTY_KEY] = True
+    
+    changed = property()
+    
     @property
     def session(self):
         """Scoped session object for the current thread
         """
-        ignore = self.engine
-        return self._Session()
+        if getattr(self._threadlocal, 'active', None):
+            return self._Session()
+            
+        if getattr(self._threadlocal, 'bound', False) is False:
+            self._metadata.bind = self._engine
+            self._threadlocal.bound = True
+        
+        session = self._Session()
+        self._transaction.begin(session)
+        return session
     
     @property
     def connection(self):
         """Get a transaction-aware connection from the session
         """
-        ignore = self.engine
         return self.session.connection()
     
     @property
     def engine(self):
-        if not self._transaction.active:
-            self._transaction.begin()
-            
+        ignore = self.session    
         return self._engine
+    
+    @property
+    def tables(self):
+        ignore = self.session
+        return self._tables
+    
+    @property
+    def mappers(self):
+        ignore = self.session
+        return self._mappers
            
     @property
     def metadata(self):
-        ignore = self.engine # ensure a transaction is active
+        ignore = self.session
         return self._metadata
          
     @property
