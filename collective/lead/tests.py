@@ -3,11 +3,12 @@
 # TEST_DSN to the connection url. e.g.:
 # export TEST_DSN=postgres://plone:plone@localhost/test
 
+
 import os
 import unittest
 import transaction
 import sqlalchemy as sa
-from sqlalchemy import orm
+from sqlalchemy import orm, sql
 from collective.lead import Database, tx
 from collective.lead.interfaces import IDatabase, ITransactionAware
 from zope.component import provideAdapter, provideUtility, getUtility
@@ -47,25 +48,25 @@ class TestDatabase(Database):
     _url = os.environ.get('TEST_DSN', 'sqlite:///test')
     
     def _setup_tables(self, metadata, tables):
-        tables['users'] = sa.Table('users', metadata,
+        tables['test_users'] = sa.Table('test_users', metadata,
             sa.Column('id', sa.Integer, primary_key=True),
             sa.Column('firstname', sa.Text),
             sa.Column('lastname', sa.Text),
             )
-        tables['skills'] = sa.Table('skills', metadata,
+        tables['test_skills'] = sa.Table('test_skills', metadata,
             sa.Column('id', sa.Integer, primary_key=True),
             sa.Column('user_id', sa.Integer),
             sa.Column('name', sa.Text),
-            sa.ForeignKeyConstraint(('user_id',), ('users.id',)),
+            sa.ForeignKeyConstraint(('user_id',), ('test_users.id',)),
             )
 
     def _setup_mappers(self, tables, mappers):
-        mappers['users'] = orm.mapper(User, tables['users'],
+        mappers['test_users'] = orm.mapper(User, tables['test_users'],
             properties = {
                 'skills': orm.relation(Skill,
-                    primaryjoin=tables['users'].columns['id']==tables['skills'].columns['user_id']),
+                    primaryjoin=tables['test_users'].columns['id']==tables['test_skills'].columns['user_id']),
             })
-        mappers['skills'] = orm.mapper(Skill, tables['skills'])
+        mappers['test_skills'] = orm.mapper(Skill, tables['test_skills'])
 
 # Setup the database
 def setup_db():
@@ -82,11 +83,23 @@ class LeadTests(unittest.TestCase):
         return getUtility(IDatabase, name=DB_NAME)
     
     def setUp(self):
-        ignore = self.db.session
-        self.db._metadata.create_all()
+        pass
     
     def tearDown(self):
         transaction.abort()
+    
+    def testAAA(self):
+        # This is an evil, lazy way to get a setUpAll
+        # sqlite seems to get in a muddle if I do this every time
+        ignore = self.db.session
+        self.db._metadata.drop_all()
+        self.db._metadata.create_all()
+        transaction.commit()
+    
+    def testzzz(self):
+        # And a tearDownAll
+        self.db._metadata.drop_all()
+        transaction.commit()
 
     def testSimplePopulation(self):
         session = self.db.session
@@ -103,6 +116,17 @@ class LeadTests(unittest.TestCase):
         row1 = rows[0]
         d = row1.asDict()
         self.assertEqual(d, {'firstname' : 'udo', 'lastname' : 'juergens', 'id' : 1})
+        
+        # bypass the session machinary
+        stmt = sql.select(query.table.columns).order_by('id')
+        results = self.db.connection.execute(stmt)
+        self.assertEqual(results.fetchall(), [(1, u'udo', u'juergens'), (2, u'heino', u'n/a')])
+        
+        # and rollback
+        transaction.abort()
+        self.db._metadata.create_all() # for some reason this is not required by sqlite
+        results = self.db.connection.execute(stmt)
+        self.assertEqual(results.fetchall(), [])
         
     def testXXRelations(self):
         session = self.db.session
