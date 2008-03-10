@@ -1,8 +1,10 @@
-import threading
+import threading, thread
 import sqlalchemy
 
 from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.orm.session import SessionExtension
+from sqlalchemy.orm.session import SessionExtension, Session
+from sqlalchemy.orm.interfaces import MapperExtension, EXT_CONTINUE
+from sqlalchemy.util import to_list
 
 from zope.interface import implements
 
@@ -12,11 +14,49 @@ from collective.lead.interfaces import ITransactionAware
 _DIRTY_KEY = 'lead:dirty'
 
 
-class DirtyAfterFlush(SessionExtension):
+class _DirtyAfterFlush(SessionExtension):
+    """Record that a flush has occurred on a session's connection. This allows
+    the DataManager to rollback rather than commit on read only transactions.
+    """
     
     def after_flush(self, session, flush_context):
         session.connection().info[_DIRTY_KEY] = True
 
+
+class _JoinZopeTransaction(MapperExtension):
+    """Join the zope transaction when session is retrieved.
+    
+    This is so that when you use the magical Class.query attribute everything works
+    correctly.
+    """
+    
+    def __init__(self, context, db):
+        self.context = context # the ScopedSession
+        self.db = db
+    
+    def init_instance(self, mapper, class_, oldinit, instance, args, kwargs):
+        """_ScopedExt automatically saves new instances. This ensures that the
+        Zope transaction is started. To switch off this behaviour supply
+        save_on_init=False in _session_properties.
+        """
+        self.db._join_transaction()
+        return EXT_CONTINUE
+    
+    def instrument_class(self, mapper, class_):
+        """This trumps the _ScopedExt version, automatically starting the Zope
+        transaction on access.
+        """
+        class query(object):
+            def __getattr__(s, key):
+                self.db._join_transaction()
+                return getattr(self.context.registry().query(class_), key)
+            def __call__(s):
+                self.db._join_transaction()
+                return self.context.registry().query(class_)
+
+        if not 'query' in class_.__dict__: 
+            class_.query = query()
+        
 
 class Database(object):
     """Base class for database utilities. You are supposed to subclass
@@ -32,20 +72,18 @@ class Database(object):
     implements(IConfigurableDatabase)
 
     def __init__(self):
-        self._Session = scoped_session(sessionmaker(extension=DirtyAfterFlush(),
-                                                    **self._session_properties))
-        self._metadata = sqlalchemy.ThreadLocalMetaData()
         self._engine = sqlalchemy.create_engine(self._url, **self._engine_properties)
-        self._Session.configure(bind=self._engine)
+        # as the engine is ThreadLocal we do not need ThreadLocalMetaData
+        self._metadata = sqlalchemy.MetaData(bind=self._engine)
+        self._Session = scoped_session(sessionmaker(
+            bind=self._engine, extension=_DirtyAfterFlush(), **self._session_properties))
         self._threadlocal = threading.local()
-        # bound: thread local metadata is bound
-        # status: None, 'JOINED', or 'CHANGED'
+        # active: session has joined transaction
+        self._mapper_extension = _JoinZopeTransaction(self._Session, self)
         self._tables = {}
         self._mappers = {}
-        self._metadata.bind = self._engine
         self._setup_tables(self._metadata, self._tables)
-        self._setup_mappers(self._tables, self._mappers)
-        self._threadlocal.bound = True
+        self._setup_mappers(self._metadata.tables, self._mappers)
         
     # IConfigurableDatabase implementation - subclasses should override these
     
@@ -67,14 +105,23 @@ class Database(object):
         """By default, reflect the metadata automatically
         """
         metadata.reflect()
-        self._tables = self.metadata.tables
         
     def _setup_mappers(self, tables, mappers):
         # Mappers are not strictly necessary
         pass
     
+    def mapper(self, class_, *args, **kwargs):
+        """Use the Session.mapper, which adds a query attribute to
+        each mapped class. Tracks the mapped class, so that it
+        can be referenced as an attribute.
+        """
+        kwargs['extension'] = extension = to_list(kwargs.get('extension', []))
+        extension.append(self._mapper_extension)
+        return self._Session.mapper(class_, *args, **kwargs)
+        
     # If the url or engine_properties change, this must be called
-    
+    # XXX can this really be made to work in a multithreaded environment
+    # without putting locks everywhere?
     def invalidate(self):
         self.__init__()
         self._tx = None
@@ -90,22 +137,21 @@ class Database(object):
         """
         self.connection.info[_DIRTY_KEY] = True
     
-    changed = property()
+    def _join_transaction(self):
+        """Call to ensure that the session is joined to the zope transaction.
+        """
+        if getattr(self._threadlocal, 'active', False):
+            return
+        
+        self._transaction.begin(self._Session())
     
     @property
     def session(self):
         """Scoped session object for the current thread
         """
-        if getattr(self._threadlocal, 'active', None):
-            return self._Session()
-            
-        if getattr(self._threadlocal, 'bound', False) is False:
-            self._metadata.bind = self._engine
-            self._threadlocal.bound = True
         
-        session = self._Session()
-        self._transaction.begin(session)
-        return session
+        self._join_transaction()
+        return self._Session()
     
     @property
     def connection(self):
@@ -115,22 +161,22 @@ class Database(object):
     
     @property
     def engine(self):
-        ignore = self.session    
+        self._join_transaction()   
         return self._engine
     
+    #XXX Deprecate?
     @property
     def tables(self):
-        ignore = self.session
-        return self._tables
+        return self.metadata.tables
     
     @property
     def mappers(self):
-        ignore = self.session
+        self._join_transaction()
         return self._mappers
            
     @property
     def metadata(self):
-        ignore = self.session
+        self._join_transaction()
         return self._metadata
          
     @property

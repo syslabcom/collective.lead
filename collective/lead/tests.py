@@ -18,6 +18,7 @@ import threading
 import sqlalchemy as sa
 from sqlalchemy import orm, sql
 from collective.lead import Database, tx
+from collective.lead.database import _DIRTY_KEY
 from collective.lead.interfaces import IDatabase, ITransactionAware
 from zope.component import provideAdapter, provideUtility, getUtility
 DB_NAME = 'collective.lead.tests.testlead'
@@ -25,7 +26,7 @@ DB_NAME = 'collective.lead.tests.testlead'
 LeadDataManager = tx.SessionDataManager
 
 TEST_COMMIT = os.environ.get('TEST_COMMIT')
-TEST_DSN = os.environ.get('TEST_DSN', 'sqlite:///test')
+TEST_DSN = os.environ.get('TEST_DSN', 'sqlite:///:memory:')
 
 # Setup adapters, (what configure.zcml does)
 provideAdapter(
@@ -82,11 +83,37 @@ class TestDatabase(Database):
             })
         mappers['test_skills'] = orm.mapper(Skill, tables['test_skills'])
 
+
+
+class User2(SimpleModel):
+    pass
+
+class TestCleverMappersDatabase(Database):
+    _url = 'sqlite:///:memory:'
+    _session_properties = Database._session_properties.copy()
+    _session_properties['twophase'] = False
+    
+    def _setup_tables(self, metadata, tables):
+        tables['test_users2'] = sa.Table('test_users2', metadata,
+            sa.Column('id', sa.Integer, primary_key=True),
+            sa.Column('firstname', sa.VARCHAR(255)), # mssql cannot do equality on a text type
+            sa.Column('lastname', sa.VARCHAR(255)),
+            )
+    
+    def _setup_mappers(self, tables, mappers):
+        mappers['test_users2'] = self.mapper(User2, tables['test_users2'])
+
+db2 = TestCleverMappersDatabase()
+db2._Session().begin()
+db2._metadata.create_all()
+db2._Session().commit()
+
+
 # Setup the database
 def setup_db():
     db = TestDatabase()
     provideUtility(db, IDatabase, name=DB_NAME)
-
+    
 setup_db()
 
 class DummyException(Exception):
@@ -333,6 +360,36 @@ class LeadTests(unittest.TestCase):
         thread.join()
         if thread_error is not None:
             raise thread_error # reraise in current thread
+    
+    def testConnection(self):
+        conn1 = self.db.connection
+        conn2 = self.db.connection
+        self.assert_(conn1 is conn2, "make sure we get the same connection returned each time")
+    
+    def testCleverMappers(self):
+        transaction.abort() # clean slate
+        t = transaction.get()
+        self.failIf([r for r in t._resources if r.__class__ is LeadDataManager],
+             "Joined transaction too early")
+        
+        newuser = User2(id=1, firstname='udo', lastname='juergens')
+        
+        self.failUnless([r for r in t._resources if r.__class__ is LeadDataManager],
+             "Not joined transaction")
+        #self.failUnless(db2.connection.info[_DIRTY_KEY], 'There should be work to do')
+        
+        transaction.commit()
+        t = transaction.begin()
+        self.failIf([r for r in t._resources if r.__class__ is LeadDataManager],
+             "Joined transaction too early")
+
+        users = User2.query.all()
+        
+        self.failUnless([r for r in t._resources if r.__class__ is LeadDataManager],
+             "Not joined transaction")
+        self.failUnless(not db2.connection.info.get(_DIRTY_KEY, None), 'There should not be work to do')
+        self.assertEqual(len(users), 1, 'There should not be one user here')
+        
         
 
 def test_suite():
