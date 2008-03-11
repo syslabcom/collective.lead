@@ -1,17 +1,14 @@
-import threading, thread
 import sqlalchemy
 
 from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.orm.session import SessionExtension, Session
+from sqlalchemy.orm.session import SessionExtension
 from sqlalchemy.orm.interfaces import MapperExtension, EXT_CONTINUE
 from sqlalchemy.util import to_list
 
 from zope.interface import implements
 
 from collective.lead.interfaces import IConfigurableDatabase
-from collective.lead.interfaces import ITransactionAware
-
-_DIRTY_KEY = 'lead:dirty'
+from collective.lead import tx
 
 
 class _DirtyAfterFlush(SessionExtension):
@@ -20,7 +17,7 @@ class _DirtyAfterFlush(SessionExtension):
     """
     
     def after_flush(self, session, flush_context):
-        session.connection().info[_DIRTY_KEY] = True
+        tx.dirty_session(session)
 
 
 class _JoinZopeTransaction(MapperExtension):
@@ -77,8 +74,6 @@ class Database(object):
         self._metadata = sqlalchemy.MetaData(bind=self._engine)
         self._Session = scoped_session(sessionmaker(
             bind=self._engine, extension=_DirtyAfterFlush(), **self._session_properties))
-        self._threadlocal = threading.local()
-        # active: session has joined transaction
         self._mapper_extension = _JoinZopeTransaction(self._Session, self)
         self._tables = {}
         self._mappers = {}
@@ -100,11 +95,14 @@ class Database(object):
                                transactional=False,
                                twophase=True,
                                )
+    
+    _mapper_properties = dict()
         
     def _setup_tables(self, metadata, tables):
         """By default, reflect the metadata automatically
         """
         metadata.reflect()
+        self._tables = metadata.tables
         
     def _setup_mappers(self, tables, mappers):
         # Mappers are not strictly necessary
@@ -115,6 +113,9 @@ class Database(object):
         each mapped class. Tracks the mapped class, so that it
         can be referenced as an attribute.
         """
+        for k, v in self._mapper_properties.items():
+            kwargs.setdefault(k, v)
+            
         kwargs['extension'] = extension = to_list(kwargs.get('extension', []))
         extension.append(self._mapper_extension)
         return self._Session.mapper(class_, *args, **kwargs)
@@ -124,7 +125,6 @@ class Database(object):
     # without putting locks everywhere?
     def invalidate(self):
         self.__init__()
-        self._tx = None
         
     # IDatabase implementation - code using (not setting up) the database
     # uses this
@@ -135,21 +135,17 @@ class Database(object):
         Normal session operations will call this automatically.
         Call this if you operate on the connection directly.
         """
-        self.connection.info[_DIRTY_KEY] = True
+        tx.dirty_session(self.session)
     
     def _join_transaction(self):
         """Call to ensure that the session is joined to the zope transaction.
         """
-        if getattr(self._threadlocal, 'active', False):
-            return
-        
-        self._transaction.begin(self._Session())
+        tx.join_transaction(self._Session())
     
     @property
     def session(self):
         """Scoped session object for the current thread
         """
-        
         self._join_transaction()
         return self._Session()
     
@@ -178,11 +174,3 @@ class Database(object):
     def metadata(self):
         self._join_transaction()
         return self._metadata
-         
-    @property
-    def _transaction(self):
-        if self._tx is None:
-            self._tx = ITransactionAware(self)
-        return self._tx
-            
-    _tx = None

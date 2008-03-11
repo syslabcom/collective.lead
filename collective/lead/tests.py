@@ -18,22 +18,12 @@ import threading
 import sqlalchemy as sa
 from sqlalchemy import orm, sql
 from collective.lead import Database, tx
-from collective.lead.database import _DIRTY_KEY
-from collective.lead.interfaces import IDatabase, ITransactionAware
+from collective.lead.interfaces import IDatabase
 from zope.component import provideAdapter, provideUtility, getUtility
 DB_NAME = 'collective.lead.tests.testlead'
 
-LeadDataManager = tx.SessionDataManager
-
 TEST_COMMIT = os.environ.get('TEST_COMMIT')
 TEST_DSN = os.environ.get('TEST_DSN', 'sqlite:///:memory:')
-
-# Setup adapters, (what configure.zcml does)
-provideAdapter(
-    tx.DatabaseTransactions,
-    adapts=(Database,),
-    provides=ITransactionAware,
-    )
 
 
 class SimpleModel(object):
@@ -207,10 +197,10 @@ class LeadTests(unittest.TestCase):
     def testTransactionJoining(self):
         transaction.abort() # clean slate
         t = transaction.get()
-        self.failIf([r for r in t._resources if r.__class__ is LeadDataManager],
+        self.failIf([r for r in t._resources if isinstance(r, tx.SessionDataManager)],
              "Joined transaction too early")
         ignore = self.db.session
-        self.failUnless([r for r in t._resources if r.__class__ is LeadDataManager],
+        self.failUnless([r for r in t._resources if isinstance(r, tx.SessionDataManager)],
              "Not joined transaction")
     
     def testSavepoint(self):
@@ -243,6 +233,9 @@ class LeadTests(unittest.TestCase):
     def testCommit(self):
         if not TEST_COMMIT: return # skip this test
         try:
+            self.db.dirty()
+            transaction.commit() # commit the tables
+            
             use_savepoint = not self.db.engine.url.drivername in tx.NO_SAVEPOINT_SUPPORT
             session = self.db.session
             query = session.query(User)
@@ -250,6 +243,7 @@ class LeadTests(unittest.TestCase):
             self.assertEqual(len(rows), 0)
             
             transaction.commit() # test a none modifying transaction works
+            
             session = self.db.session
             query = session.query(User)
             rows = query.all()
@@ -296,39 +290,40 @@ class LeadTests(unittest.TestCase):
                 results = self.db.connection.execute(stmt)
                 self.assertEqual(len(results.fetchall()), 1)
     
-    
-            # Test that we clean up after a tpc_abort
-            t = transaction.get()
-            dummy = DummyDataManager(key='~~~dummy.last')
-            t.join(dummy)
-            session = self.db.session
-            query = session.query(User)
-            rows = query.all()
-            session.delete(rows[0])
-            session.flush()
-            
-            try:
-                t.commit()
-            except DummyTargetResult, e:
-                result = e.args[0]
-                #XXX test that we have recover list here
-            except DummyTargetRaised, e:
-                raise e.args[0]
-            except DummyException, e:
-                pass
-            
-            transaction.begin()   
-
             if self.db.session.twophase:
+                # Test that we clean up after a tpc_abort
+                t = transaction.get()
+                dummy = DummyDataManager(key='~~~dummy.last')
+                t.join(dummy)
+                session = self.db.session
+                query = session.query(User)
+                rows = query.all()
+                session.delete(rows[0])
+                session.flush()
+            
+                try:
+                    t.commit()
+                except DummyTargetResult, e:
+                    result = e.args[0]
+                    #XXX test that we have recover list here
+                except DummyTargetRaised, e:
+                    raise e.args[0]
+                except DummyException, e:
+                    pass
+            
+                transaction.begin()
+            
                 self.assertEqual(len(self.db.connection.recover_twophase()), 0, "Test no outstanding prepared transactions")
 
         finally:
             transaction.abort()
             transaction.begin()
             self.db._metadata.drop_all()
+            self.db.dirty()
             transaction.commit()
     
     def testThread(self):
+        transaction.abort()
         global thread_error
         thread_error = None
         def target(db):
@@ -369,25 +364,25 @@ class LeadTests(unittest.TestCase):
     def testCleverMappers(self):
         transaction.abort() # clean slate
         t = transaction.get()
-        self.failIf([r for r in t._resources if r.__class__ is LeadDataManager],
+        self.failIf([r for r in t._resources if isinstance(r, tx.SessionDataManager)],
              "Joined transaction too early")
         
         newuser = User2(id=1, firstname='udo', lastname='juergens')
         
-        self.failUnless([r for r in t._resources if r.__class__ is LeadDataManager],
+        self.failUnless([r for r in t._resources if isinstance(r, tx.SessionDataManager)],
              "Not joined transaction")
-        #self.failUnless(db2.connection.info[_DIRTY_KEY], 'There should be work to do')
+        #self.failUnless(db2.connection.info[tx.STATUS_KEY], 'There should be work to do')
         
         transaction.commit()
         t = transaction.begin()
-        self.failIf([r for r in t._resources if r.__class__ is LeadDataManager],
+        self.failIf([r for r in t._resources if isinstance(r, tx.SessionDataManager)],
              "Joined transaction too early")
 
         users = User2.query.all()
         
-        self.failUnless([r for r in t._resources if r.__class__ is LeadDataManager],
+        self.failUnless([r for r in t._resources if isinstance(r, tx.SessionDataManager)],
              "Not joined transaction")
-        self.failUnless(not db2.connection.info.get(_DIRTY_KEY, None), 'There should not be work to do')
+        self.assertEqual(db2.connection.info.get(tx.STATUS_KEY, None), tx.STATUS_ACTIVE, 'There should not be work to do')
         self.assertEqual(len(users), 1, 'There should not be one user here')
         
         
