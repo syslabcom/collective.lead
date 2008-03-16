@@ -246,7 +246,6 @@ class LeadTests(unittest.TestCase):
             
             session = self.db.session
             query = session.query(User)
-            rows = query.all()
 
             session.save(User(id=1, firstname='udo', lastname='juergens'))
             session.save(User(id=2, firstname='heino', lastname='n/a'))
@@ -254,6 +253,17 @@ class LeadTests(unittest.TestCase):
 
             rows = query.order_by(query.table.c.id).all()
             self.assertEqual(len(rows), 2)
+            
+            transaction.abort() # test that the abort really aborts
+            session = self.db.session
+            query = session.query(User)
+            rows = query.order_by(query.table.c.id).all()
+            self.assertEqual(len(rows), 0)
+            
+            session.save(User(id=1, firstname='udo', lastname='juergens'))
+            session.save(User(id=2, firstname='heino', lastname='n/a'))
+            session.flush()
+            rows = query.order_by(query.table.c.id).all()
             row1 = rows[0]
             d = row1.asDict()
             self.assertEqual(d, {'firstname' : 'udo', 'lastname' : 'juergens', 'id' : 1})
