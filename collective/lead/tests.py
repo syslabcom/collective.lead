@@ -20,7 +20,6 @@ from sqlalchemy import orm, sql
 from collective.lead import Database, tx
 from collective.lead.interfaces import IDatabase
 from collective.lead.experimental import ExtenedMapperDatabase
-from zope.component import provideAdapter, provideUtility, getUtility
 DB_NAME = 'collective.lead.tests.testlead'
 
 TEST_COMMIT = os.environ.get('TEST_COMMIT')
@@ -74,10 +73,12 @@ class TestDatabase(Database):
             })
         mappers['test_skills'] = orm.mapper(Skill, tables['test_skills'])
 
+db = TestDatabase()
 
 
 class User2(SimpleModel):
     pass
+
 
 class TestCleverMappersDatabase(ExtenedMapperDatabase):
     _url = 'sqlite:///:memory:'
@@ -99,13 +100,6 @@ db2._Session().begin()
 db2.metadata.create_all()
 db2._Session().commit()
 
-
-# Setup the database
-def setup_db():
-    db = TestDatabase()
-    provideUtility(db, IDatabase, name=DB_NAME)
-    
-setup_db()
 
 class DummyException(Exception):
     pass
@@ -154,9 +148,7 @@ class DummyDataManager(object):
 
 class LeadTests(unittest.TestCase):
 
-    @property
-    def db(self):
-        return getUtility(IDatabase, name=DB_NAME)
+    db = db
     
     def setUp(self):
         ignore = self.db.session

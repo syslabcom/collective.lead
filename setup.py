@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '1.0'
+version = '2.0'
 
 setup(name='collective.lead',
       version=version,
@@ -23,8 +23,7 @@ no CRUD operations, and no dancing polar bears.
 You need to understand SQLAlchemy for this package and this README to make 
 any sense. See http://sqlalchemy.org/doc.
 
-NOTE: collective.lead 1.0 targets SQLAlchemy 0.3 only. Subsequent versions 
-will target SQLAlchemy 0.4.
+NOTE: collective.lead 2.0 requires SQLAlchemy 0.4.
 
 The use case
 ------------
@@ -61,7 +60,7 @@ The use case
       install_requires=[
           # -*- Extra requirements: -*-
           'setuptools',
-          'SQLAlchemy>=0.3.10,<0.4dev',
+          'SQLAlchemy>=0.4.4',
       ],
       entry_points="""
       # -*- Entry points: -*-

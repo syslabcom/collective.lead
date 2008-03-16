@@ -33,11 +33,11 @@ class Database(object):
 
     def __init__(self):
         self._engine = sqlalchemy.create_engine(self._url, **self._engine_properties)
-        # as the engine is ThreadLocal we do not need ThreadLocalMetaData
-        if self.metadata is None:
-            self.metadata = sqlalchemy.MetaData() # metadata is not bound, as it may be shared between databases
         self._Session = scoped_session(sessionmaker(
             bind=self._engine, extension=DirtyAfterFlush(), **self._session_properties))
+        # metadata is not bound, as it could be shared between databases
+        if self.metadata is None:
+            self.metadata = sqlalchemy.MetaData()
         self._tables = {}
         self._mappers = {}
         self._setup_tables(self.metadata, self._tables)
@@ -58,9 +58,7 @@ class Database(object):
                                transactional=False,
                                twophase=True,
                                )
-    
-    _mapper_properties = dict()
-    
+        
     # For backward compatibility set to tx.STATUS_DIRTY
     # For a readonly databse set to tx.STATUS_READONLY
     _initial_transaction_status = tx.STATUS_ACTIVE
@@ -125,5 +123,5 @@ class Database(object):
     def mappers(self):
         self._join_transaction()
         return self._mappers
-           
+    
     metadata = None

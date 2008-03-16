@@ -53,6 +53,8 @@ class ExtenedMapperDatabase(Database):
     to multiple databases needs to be thought through.
     """
     
+    _mapper_properties = dict()
+    
     def __init__(self):
         self._engine = sqlalchemy.create_engine(self._url, **self._engine_properties)
         # as the engine is ThreadLocal we do not need ThreadLocalMetaData

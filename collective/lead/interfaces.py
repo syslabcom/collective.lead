@@ -40,6 +40,10 @@ class IConfigurableDatabase(IDatabase):
     
     _engine_properties = Attribute("A dictionary of additional arguments to pass to create_engine()")
     
+    _session_properties = Attribute("A dictionary of additional arguments to pass to sessionmaker()")
+    
+    _initial_transaction_status = Attribute("`active`, `dirty` or `readonly`")
+    
     def _setup_tables(metadata, tables):
         """Given an SQLAlchemy Metadata for the current engine, set up
         Tables for the database structure, saving them to the dict
