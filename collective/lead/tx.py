@@ -6,28 +6,30 @@ from transaction.interfaces import IDataManager, ISavepointDataManager, IDataMan
 
 from sqlalchemy.orm.scoping import ScopedSession
 
+# The status of the session is stored on the connection info
 STATUS_KEY = 'lead:status'
-STATUS_ACTIVE = 'active'
-STATUS_DIRTY = 'dirty'
+STATUS_ACTIVE = 'active' # session joined to transaction, writes allowed.
+STATUS_DIRTY = 'dirty' # data has been written
+STATUS_READONLY = 'readonly' # session joined to transaction, no writes allowed.
 
 NO_SAVEPOINT_SUPPORT = frozenset(['sqlite'])
 
 class SessionDataManager(object):
     """Integrate a top level sqlalchemy session transaction into a zope transaction
     
-    Optionally supports twophase commit protocol
+    One phase variant, no savepoint support.
     """
     
     implements(IDataManager)
 
-    def __init__(self, session):
+    def __init__(self, session, status):
         if session.transactional:
             self.tx = session.transaction._iterate_parents()[-1]
         else:
             assert session.transaction is None
             self.tx = session.begin()
         self.session = session
-        self.session.connection().info[STATUS_KEY] = STATUS_ACTIVE
+        self.session.connection().info[STATUS_KEY] = status
         self.state = 'init'
 
     def abort(self, trans):
@@ -70,7 +72,7 @@ class SessionDataManager(object):
 
 
 class SessionSavepointDataManager(SessionDataManager):
-    """One phase variant supporting savepoints
+    """One phase variant supporting savepoints.
     """
     
     implements(ISavepointDataManager)
@@ -80,7 +82,7 @@ class SessionSavepointDataManager(SessionDataManager):
 
 
 class TwoPhaseSessionDataManager(SessionDataManager):
-    """Two phase variant
+    """Two phase variant, no savepoint support.
     """
     def tpc_vote(self, trans):
         if self.tx is not None: # there may have been no work to do
@@ -107,7 +109,7 @@ class TwoPhaseSessionDataManager(SessionDataManager):
 
 
 class TwoPhaseSessionSavepointDataManager(TwoPhaseSessionDataManager):
-    """Two phase variant supporting savepoints
+    """Two phase variant supporting savepoints.
     """
     
     implements(ISavepointDataManager)
@@ -137,15 +139,22 @@ _DM_MAP = { # (twophase, savepoint): DataManager
     (True, True)  : TwoPhaseSessionSavepointDataManager,
     }
 
-def join_transaction(session):
-    """join a session to a transaction using the appropriate datamanager for a 
+def join_transaction(session, initial_status=STATUS_ACTIVE):
+    """Join a session to a transaction using the appropriate datamanager.
+       
+    It is safe to call this multiple times, if the session is already joined
+    then it just returns.
+       
+    `initial_status` is either STATUS_ACTIVE, STATUS_DIRTY or STATUS_READONLY
     """
     if session.connection().info.get(STATUS_KEY, None) is None:
-        DataManager = _DM_MAP[(session.twophase, session.bind.url.drivername not in NO_SAVEPOINT_SUPPORT)]
-        transaction.get().join(DataManager(session))
+        DataManager = _DM_MAP[(bool(session.twophase), session.bind.url.drivername not in NO_SAVEPOINT_SUPPORT)]
+        transaction.get().join(DataManager(session, initial_status))
 
 def dirty_session(session):
     """Mark a session as needing to be committed
     """
-    session.connection().info[STATUS_KEY] = STATUS_DIRTY
+    info = session.connection().info
+    assert info.get(STATUS_KEY, None) is not STATUS_READONLY
+    info[STATUS_KEY] = STATUS_DIRTY
 

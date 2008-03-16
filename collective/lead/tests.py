@@ -19,6 +19,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm, sql
 from collective.lead import Database, tx
 from collective.lead.interfaces import IDatabase
+from collective.lead.experimental import ExtenedMapperDatabase
 from zope.component import provideAdapter, provideUtility, getUtility
 DB_NAME = 'collective.lead.tests.testlead'
 
@@ -78,7 +79,7 @@ class TestDatabase(Database):
 class User2(SimpleModel):
     pass
 
-class TestCleverMappersDatabase(Database):
+class TestCleverMappersDatabase(ExtenedMapperDatabase):
     _url = 'sqlite:///:memory:'
     _session_properties = Database._session_properties.copy()
     _session_properties['twophase'] = False
@@ -95,7 +96,7 @@ class TestCleverMappersDatabase(Database):
 
 db2 = TestCleverMappersDatabase()
 db2._Session().begin()
-db2._metadata.create_all()
+db2.metadata.create_all()
 db2._Session().commit()
 
 
@@ -159,8 +160,8 @@ class LeadTests(unittest.TestCase):
     
     def setUp(self):
         ignore = self.db.session
-        self.db._metadata.drop_all()
-        self.db._metadata.create_all()
+        self.db.metadata.drop_all(self.db._engine)
+        self.db.metadata.create_all(self.db._engine)
     
     def tearDown(self):
         transaction.abort()
@@ -328,7 +329,7 @@ class LeadTests(unittest.TestCase):
         finally:
             transaction.abort()
             transaction.begin()
-            self.db._metadata.drop_all()
+            self.db.metadata.drop_all(self.db._engine)
             self.db.dirty()
             transaction.commit()
     
@@ -339,8 +340,8 @@ class LeadTests(unittest.TestCase):
         def target(db):
             try:
                 session = db.session
-                db._metadata.drop_all()
-                db._metadata.create_all()
+                db.metadata.drop_all(self.db._engine)
+                db.metadata.create_all(self.db._engine)
             
                 query = session.query(User)
                 rows = query.all()
