@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '1.0'
+version = '1.1'
 
 setup(name='collective.lead',
       version=version,
@@ -61,7 +61,8 @@ The use case
       install_requires=[
           # -*- Extra requirements: -*-
           'setuptools',
-          'SQLAlchemy>=0.3.10,<0.4dev',
+          'SQLAlchemy>=0.4.6,<0.5dev',
+          'zope.sqlalchemy',
       ],
       entry_points="""
       # -*- Entry points: -*-

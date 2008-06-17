@@ -2,7 +2,12 @@ Changelog for collective.lead
 
     (name of developer listed in brackets)
 
-collective.lead - 1.0 Unreleased
+collective.lead - 1.1 (unreleased)
+
+    - Use zope.sqlalchemy for transaction integration.
+      [elro]
+
+collective.lead - 1.0
 
     - Initial package structure.
       [zopeskel]

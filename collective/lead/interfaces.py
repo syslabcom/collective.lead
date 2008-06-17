@@ -30,15 +30,16 @@ class IConfigurableDatabase(IDatabase):
     
     def invalidate(self):
         """Invalidate the configuration of the database, causing the engine
-        to be re-initialised. This will not re-map database tables 
-        (self._setup_tables() and self._setup_mappers() are still called at
-        most once per Zope start-up), but tables will be re-bound to 
-        different metadata if necessary.
+        to be re-initialised and tables and mappers to be reset.
+        Bound metadata is passed to the setup methods for backwards compatability,
+        but is unbound by the end of this method.
         """
     
     _url = Attribute("An sqlalchemy.engine.url.URL used to connect to the database server")
     
     _engine_properties = Attribute("A dictionary of additional arguments to pass to create_engine()")
+
+    _session_properties = Attribute("A dictionary of additional arguments to pass to create_session()")
     
     def _setup_tables(metadata, tables):
         """Given an SQLAlchemy Metadata for the current engine, set up
@@ -49,24 +50,6 @@ class IConfigurableDatabase(IDatabase):
     def _setup_mappers(tables, mappers):
         """Given a dict of tables, keyed by table name as in self.tables,
         set up all SQLAlchemy mappers for the database and save them to the
-        dict 'mappers', keyed by table name..
+        dict 'mappers', keyed by table name.
         """
         
-# Used by the transaction integration
-class ITransactionAware(Interface):
-    """Transaction-aware objects
-    """
-    
-    def begin():
-        """Begin the transaction
-        """
-        
-    def commit():
-        """Commit the transaction
-        """
-        
-    def rollback():
-        """Commit the transaction
-        """
-        
-    active = Attribute("True if the transaction is currently in-progress")
