@@ -61,7 +61,6 @@ The use case
       install_requires=[
           # -*- Extra requirements: -*-
           'setuptools',
-          'SQLAlchemy>=0.4.6,<0.5dev',
           'zope.sqlalchemy',
       ],
       entry_points="""
