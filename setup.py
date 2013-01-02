@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import os
 
-version = '1.0'
+version = '1.0.1'
 
 setup(name='collective.lead',
       version=version,
@@ -26,7 +26,7 @@ setup(name='collective.lead',
       zip_safe=False,
       install_requires=[
           'setuptools',
-          'SQLAlchemy>=0.3.10,<0.5dev',
+          'SQLAlchemy',
       ],
       entry_points="""
       # -*- Entry points: -*-

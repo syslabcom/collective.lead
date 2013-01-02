@@ -1,6 +1,10 @@
 Changelog
 =========
 
+1.0.1 (2013-01-02)
+----------------
+- Remove unecessary sqlalchemy version pins
+
 1.0 - unreleased
 ----------------
 
