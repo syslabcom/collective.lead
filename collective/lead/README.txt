@@ -1,6 +1,5 @@
-=================
- collective.lead
-=================
+Introduction
+============
 
 The lead part of the alchemist's toolkit.
 
@@ -17,6 +16,10 @@ no CRUD operations, and no dancing polar bears.
 
 You need to understand SQLAlchemy for this package and this README to make 
 any sense. See http://sqlalchemy.org/docs/.
+
+Please note that this package is only meant to be used as a tool in other
+packages; you can not install it directly in a Zope site.
+
 
 The use case
 ------------
@@ -51,7 +54,6 @@ named utility providing IDatabase.
 
     >>> from collective.lead import Database
     >>> import sqlalchemy as sa
-    >>> from sqlalchemy import orm
 
     >>> class MyDatabase(Database):
     ...     @property
@@ -64,10 +66,10 @@ named utility providing IDatabase.
     ...         tables['table2'] = sa.Table('table2', metadata, autoload=True)
     ... 
     ...     def _setup_mappers(self, tables, mappers):
-    ...         mappers['table1'] = orm.mapper(TableOne, tables['table1'])
-    ...         mappers['table2'] = orm.mapper(TableTwo, tables['table2'],
+    ...         mappers['table1'] = sa.mapper(TableOne, tables['table1'])
+    ...         mappers['table2'] = sa.mapper(TableTwo, tables['table2'],
     ...                                         properties = {
-    ...                                             'table1' : orm.relation(TableOne),
+    ...                                             'table1' : sa.relation(TableOne),
     ...                                             })
         
 

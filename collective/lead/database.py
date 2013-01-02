@@ -1,10 +1,12 @@
-from sqlalchemy import create_engine, MetaData
-from sqlalchemy.orm import scoped_session, sessionmaker
-from zope.sqlalchemy import ZopeTransactionExtension
+import threading
+import sqlalchemy
+
+from sqlalchemy.orm.session import Session
 
 from zope.interface import implements
 
 from collective.lead.interfaces import IConfigurableDatabase
+from collective.lead.interfaces import ITransactionAware
 
 class Database(object):
     """Base class for database utilities. You are supposed to subclass
@@ -20,9 +22,9 @@ class Database(object):
     implements(IConfigurableDatabase)
 
     def __init__(self):
+        self._threadlocal = threading.local()
         self.tables = {}
         self.mappers = {}
-        self._initialize_engine()
         
     # IConfigurableDatabase implementation - subclasses should override these
     
@@ -32,15 +34,7 @@ class Database(object):
         
     @property
     def _engine_properties(self):
-        return dict(convert_unicode=True)
-    
-    @property
-    def _session_properties(self):
-        return dict(
-            extension=ZopeTransactionExtension(),
-            transactional=True,
-            autoflush=True,
-            )
+        return {}
         
     def _setup_tables(self, metadata, tables):
         raise NotImplemented("You must implement the _setup_tables() method")
@@ -59,34 +53,61 @@ class Database(object):
     
     @property
     def session(self):
-        return self._Session()
+        if getattr(self._threadlocal, 'session', None) is None:
+            # Without this, we may not have mapped things properly, nor
+            # will we necessarily start a transaction when the client
+            # code begins to use the session.
+            ignore = self.engine
+            self._threadlocal.session = Session()
+        return self._threadlocal.session
     
     @property
     def connection(self):
-        return self.session.connection()
+        return self.engine.contextual_connect()
     
     @property
     def engine(self):
-        return self.session.bind
+
+        if self._engine is None:
+            self._initialize_engine()
+            
+        if not self._transaction.active:
+             self._transaction.begin()
+
+        return self._engine
 
     # Helper methods
     
     def _initialize_engine(self):
-        engine = create_engine(self._url, **self._engine_properties)
-        metadata = MetaData(engine) # be bound only for setup
+        kwargs = dict(self._engine_properties).copy()
+        if 'strategy' not in kwargs:
+            kwargs['strategy'] = 'threadlocal'
+        if 'convert_unicode' not in kwargs:
+            kwargs['convert_unicode'] = True
         
-        for mapper in self.mappers.values():
-            mapper.dispose()
-        self.tables = {}
-        self.mappers = {}
-        self._setup_tables(metadata, self.tables)
-        self._setup_mappers(self.tables, self.mappers)
+        engine = sqlalchemy.create_engine(self._url, **kwargs)
+        metadata = sqlalchemy.MetaData(engine)
         
-        metadata.bind = None # unbind the metadata after setup
+        # We will only initialize once, but we may rebind metadata if
+        # necessary
+
+        if not self.tables:
+            self._setup_tables(metadata, self.tables)
+            self._setup_mappers(self.tables, self.mappers)
+        else:
+            for name, table in self.tables.items():
+                self.tables[name] = table.tometadata(self._metadata)
+        
+        self._engine = engine
         self._metadata = metadata
-        
-        self._Session = scoped_session(
-            sessionmaker(bind=engine, **self._session_properties))
+
+         
+    @property
+    def _transaction(self):
+        if self._tx is None:
+            self._tx = ITransactionAware(self)
+        return self._tx
             
+    _engine = None
     _metadata = None
-    _Session = None
+    _tx = None
