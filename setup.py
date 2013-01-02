@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import os
 
-version = '1.0.1'
+version = '1.0.1dev'
 
 setup(name='collective.lead',
       version=version,
