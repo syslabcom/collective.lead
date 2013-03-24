@@ -62,6 +62,7 @@ The use case
           # -*- Extra requirements: -*-
           'setuptools',
           'zope.sqlalchemy',
+          'SQLAlchemy>=0.6.0',
       ],
       entry_points="""
       # -*- Entry points: -*-

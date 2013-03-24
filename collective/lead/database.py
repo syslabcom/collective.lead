@@ -38,7 +38,7 @@ class Database(object):
     def _session_properties(self):
         return dict(
             extension=ZopeTransactionExtension(),
-            transactional=True,
+            autocommit=False,
             autoflush=True,
             )
         
