@@ -1,14 +1,17 @@
-Changelog for collective.lead
+Changelog
+=========
 
-    (name of developer listed in brackets)
+1.1 (unreleased)
+----------------
+- Use zope.sqlalchemy for transaction integration.
+  [elro]
 
-collective.lead - 1.1 (unreleased)
+- Support SQLAlchemy>=0.6.0
+  [jcerjak]
 
-    - Use zope.sqlalchemy for transaction integration.
-      [elro]
+1.0 (2008-04-27)
+----------------
 
-collective.lead - 1.0
-
-    - Initial package structure.
-      [zopeskel]
+- Initial release.
+  [optilude]
 
