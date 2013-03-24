@@ -1,23 +1,29 @@
-# Much inspiration from z3c.sqlalchemy/trunk/src/z3c/sqlalchemy/tests/testSQLAlchemy.py
+# Much inspiration from
+# z3c.sqlalchemy/trunk/src/z3c/sqlalchemy/tests/testSQLAlchemy.py
 #
-# You may want to run the tests with your database. To do so set the environment variable
+# You may want to run the tests with your database. To do so set the
+# environment variable
 # TEST_DSN to the connection url. e.g.:
 # export TEST_DSN=postgres://plone:plone@localhost/test
 #
-# To test the commit code export TEST_COMMIT=True 
+# To test the commit code export TEST_COMMIT=True
 #
-# NOTE: The sqlite that ships with Mac OS X 10.4 and 10.5 is buggy. Install a newer version (3.5.6)
-#       and rebuild pysqlite2 against it.
+# NOTE: The sqlite that ships with Mac OS X 10.4 and 10.5 is buggy. Install a
+# newer version (3.5.6) and rebuild pysqlite2 against it.
 
-
-import os
-import unittest
-import transaction
-import sqlalchemy as sa
-from sqlalchemy import orm, sql
 from collective.lead import Database
 from collective.lead.interfaces import IDatabase
-from zope.component import provideAdapter, provideUtility, getUtility
+from sqlalchemy import orm
+from sqlalchemy import sql
+from zope.component import getUtility
+from zope.component import provideUtility
+
+import os
+import sqlalchemy as sa
+import transaction
+import unittest
+
+
 DB_NAME = 'collective.lead.tests.testlead'
 
 
@@ -26,9 +32,10 @@ class SimpleModel(object):
     def __init__(self, **kw):
         for k, v in kw.items():
             setattr(self, k, v)
-    
+
     def asDict(self):
-        return dict((k, v) for k, v in self.__dict__.items() if not k.startswith('_'))
+        return dict((k, v) for k, v in self.__dict__.items()
+                    if not k.startswith('_'))
 
 
 class User(SimpleModel):
@@ -42,7 +49,7 @@ class Skill(SimpleModel):
 class TestDatabase(Database):
 
     _url = os.environ.get('TEST_DSN', 'sqlite:///:memory:')
-    
+
     def _setup_tables(self, metadata, tables):
         tables['test_users'] = sa.Table('test_users', metadata,
             sa.Column('id', sa.Integer, primary_key=True),
@@ -60,11 +67,12 @@ class TestDatabase(Database):
 
     def _setup_mappers(self, tables, mappers):
         mappers['test_users'] = orm.mapper(User, tables['test_users'],
-            properties = {
+            properties={
                 'skills': orm.relation(Skill,
-                    primaryjoin=tables['test_users'].columns['id']==tables['test_skills'].columns['user_id']),
+                    primaryjoin=tables['test_users'].columns['id'] == tables['test_skills'].columns['user_id']),
             })
         mappers['test_skills'] = orm.mapper(Skill, tables['test_skills'])
+
 
 # Setup the database
 def setup_db():
@@ -79,7 +87,7 @@ class LeadTests(unittest.TestCase):
     @property
     def db(self):
         return getUtility(IDatabase, name=DB_NAME)
-    
+
     def tearDown(self):
         transaction.abort()
 
@@ -92,27 +100,32 @@ class LeadTests(unittest.TestCase):
         session.save(User(id=1, firstname='udo', lastname='juergens'))
         session.save(User(id=2, firstname='heino', lastname='n/a'))
         session.flush()
-        
+
         rows = query.order_by(query.table.c.id).all()
         self.assertEqual(len(rows), 2)
         row1 = rows[0]
         d = row1.asDict()
-        self.assertEqual(d, {'firstname' : 'udo', 'lastname' : 'juergens', 'id' : 1})
-        
+        self.assertEqual(
+            d, {'firstname': 'udo', 'lastname': 'juergens', 'id': 1})
+
         # bypass the session machinary
         stmt = sql.select(query.table.columns).order_by('id')
         results = self.db.engine.connect().execute(stmt)
-        self.assertEqual(results.fetchall(), [(1, u'udo', u'juergens'), (2, u'heino', u'n/a')])
-        
+        self.assertEqual(
+            results.fetchall(),
+            [(1, u'udo', u'juergens'),
+             (2, u'heino', u'n/a')]
+        )
+
         # and rollback
         transaction.abort()
         self.db.invalidate()
         results = self.db.connection.execute(stmt)
         self.assertEqual(results.fetchall(), [])
-        
-    def testRelations(self):        
+
+    def testRelations(self):
         session = self.db.session
-        session.save(User(id=1,firstname='foo', lastname='bar'))
+        session.save(User(id=1, firstname='foo', lastname='bar'))
 
         user = session.query(User).filter_by(firstname='foo')[0]
         user.skills.append(Skill(id=1, name='Zope'))
