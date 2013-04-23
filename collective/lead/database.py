@@ -1,10 +1,15 @@
 from collective.lead.interfaces import IConfigurableDatabase
 from sqlalchemy import create_engine
 from sqlalchemy import MetaData
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import scoped_session
 from sqlalchemy.orm import sessionmaker
 from zope.interface import implements
 from zope.sqlalchemy import ZopeTransactionExtension
+
+import logging
+
+logger = logging.getLogger('collective.lead.database')
 
 
 class Database(object):
@@ -73,7 +78,12 @@ class Database(object):
     # Helper methods
 
     def _initialize_engine(self):
-        engine = create_engine(self._url, **self._engine_properties)
+        try:
+            engine = create_engine(self._url, **self._engine_properties)
+        except SQLAlchemyError:
+            logger.exception('Error creating db engine:')
+            return
+
         metadata = MetaData(engine)  # be bound only for setup
 
         for mapper in self.mappers.values():
@@ -86,8 +96,11 @@ class Database(object):
         metadata.bind = None  # unbind the metadata after setup
         self._metadata = metadata
 
-        self._Session = scoped_session(
-            sessionmaker(bind=engine, **self._session_properties))
+        try:
+            self._Session = scoped_session(
+                sessionmaker(bind=engine, **self._session_properties))
+        except SQLAlchemyError:
+            logger.exception('Error creating a session:')
 
     _metadata = None
     _Session = None
