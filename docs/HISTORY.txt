@@ -1,7 +1,7 @@
 Changelog
 =========
 
-1.1 (unreleased)
+1.1 (2013-05-14)
 ----------------
 - Use zope.sqlalchemy for transaction integration.
   [elro]
